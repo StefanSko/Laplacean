@@ -2,11 +2,13 @@
 name = "laplacean"
 version = "0.1.0"
 description = ""
-authors = ["skorus01 <SkoruS01@stepstone.com>"]
+authors = ["Stefan Skoruppa <Stefan.sko@gmail.com>"]
 readme = "README.md"
 
 [tool.poetry.dependencies]
 python = "^3.11"
+jax = "^0.4.26"
+jaxtyping = "^0.2.28"
 
 
 [build-system]
