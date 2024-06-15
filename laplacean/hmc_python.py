@@ -2,8 +2,6 @@ import numpy as np
 from typing import Callable
 from numpy import typing as npt
 
-from scipy.stats import norm
-
 
 import seaborn as sns
 import matplotlib.pyplot as plt
