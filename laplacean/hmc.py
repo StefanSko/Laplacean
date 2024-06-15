@@ -3,7 +3,7 @@ import jax.numpy as jnp
 from jax import grad
 from jax.random import PRNGKey
 from jaxtyping import Array, Float
-from typing import Callable
+from typing import Callable, Tuple
 
 import jax.random as random
 
@@ -15,7 +15,7 @@ PotentialFn = Callable[[Array], Float]
 GradientFn = Callable[[Array], Array]
 
 
-def hmc(U: PotentialFn, grad_U: GradientFn, epsilon: Float, L: int, current_q: Array, key: jax.random.PRNGKey) -> Array:
+def hmc(U: PotentialFn, grad_U: GradientFn, epsilon: Float, L: int, current_q: Array, key: jax.random.PRNGKey) -> Tuple[Array, Float]:
     q = jnp.array(current_q)
     key, subkey = random.split(key)
     p = random.normal(subkey, q.shape)
@@ -42,8 +42,12 @@ def hmc(U: PotentialFn, grad_U: GradientFn, epsilon: Float, L: int, current_q: A
     proposed_K = jnp.sum(p ** 2) / 2
     # Accept or reject the state at the end of trajectory, returning either
     # the position at the end of the trajectory or the initial position
-    key, subkey = random.split(key)
     accept_prob = jnp.exp(current_U - proposed_U + current_K - proposed_K)
+    return q, accept_prob, key
+
+def hmc_with_key(U: PotentialFn, grad_U: GradientFn, epsilon: float, L: int, current_q: jnp.ndarray, key: jax.random.PRNGKey) -> Tuple[Array, jax.random.PRNGKey]:
+    q, accept_prob, key = hmc(U, grad_U, epsilon, L, current_q, key)
+    key, subkey = random.split(key)
     accept = random.uniform(subkey) < accept_prob
     q_new = jax.lax.cond(accept, lambda _: q, lambda _: current_q, operand=None)
     return q_new, key
@@ -51,12 +55,13 @@ def hmc(U: PotentialFn, grad_U: GradientFn, epsilon: Float, L: int, current_q: A
 def run_hmc(U: PotentialFn, grad_U: GradientFn, epsilon: float, L: int, initial_q: jnp.ndarray, num_samples: int, key: jax.random.PRNGKey) -> jnp.ndarray:
     def body_fun(carry, _):
         q, key = carry
-        q, key = hmc(U, grad_U, epsilon, L, q, key)
+        q, key = hmc_with_key(U, grad_U, epsilon, L, q, key)
         return (q, key), q
     
     _, samples = jax.lax.scan(body_fun, (initial_q, key), jnp.arange(num_samples))
     return samples
 
+#
 # Example usage for potential energy function corresponding to a standard normal distribution with mean 0 and variance 1
 # U needs to return the negative log of the density
 def U(q: Array) -> Float:
