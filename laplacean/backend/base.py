@@ -1,5 +1,4 @@
-from typing import Protocol, Callable, Union
-from jax.numpy import ndarray
+from typing import Protocol, Callable, Tuple, Union
 import numpy as np
 import jax.numpy as jnp
 
