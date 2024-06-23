@@ -20,6 +20,8 @@ def hmc(U: PotentialFn, grad_U: GradientFn, epsilon: Float, L: int, current_q: A
     key, subkey = random.split(key)
     p = random.normal(subkey, q.shape)
 
+    jax.debug.print("key: {key}", key = key)
+
     current_p = p
     # Make a half step for momentum at the beginning
     p = p - epsilon * grad_U(q) / 2
@@ -35,14 +37,22 @@ def hmc(U: PotentialFn, grad_U: GradientFn, epsilon: Float, L: int, current_q: A
     p = p - epsilon * grad_U(q) / 2
     # Negate momentum at end of trajectory to make the proposal symmetric
     p = -p
+    
+    jax.debug.print("p: {p}", p = p)
+    jax.debug.print("q: {q}", q = q)
     # Evaluate potential and kinetic energies at start and end of trajectory
     current_U = U(current_q)
+    jax.debug.print("U: {U}", U = current_U)
     current_K = jnp.sum(current_p ** 2) / 2
+    jax.debug.print("K: {K}", K = current_K)
     proposed_U = U(q)
     proposed_K = jnp.sum(p ** 2) / 2
+    jax.debug.print("prop_U: {prop_U}", prop_U = proposed_U)
+    jax.debug.print("prop_K: {prop_K}", prop_K = proposed_K)
     # Accept or reject the state at the end of trajectory, returning either
     # the position at the end of the trajectory or the initial position
     accept_prob = jnp.exp(current_U - proposed_U + current_K - proposed_K)
+    print("====================")
     return q, accept_prob, key
 
 def hmc_with_key(U: PotentialFn, grad_U: GradientFn, epsilon: float, L: int, current_q: jnp.ndarray, key: jax.random.PRNGKey) -> Tuple[Array, jax.random.PRNGKey]:
@@ -72,7 +82,7 @@ def grad_U(q: Array) -> Array:
 
 initial_q = jnp.array([1.])
 key = jax.random.PRNGKey(0)
-samples = run_hmc(U, grad_U, epsilon=0.1, L=10, initial_q=initial_q, num_samples=5000, key=key)
+samples = run_hmc(U, grad_U, epsilon=0.1, L=10, initial_q=initial_q, num_samples=2, key=key)
 print(jnp.mean(samples)) 
 print(jnp.var(samples))
 
