@@ -1,0 +1,6 @@
+- Key management in jax
+    - implications for design?
+- How to debug efficiently?
+    - Data structure with trace of outputs?
+        - How to best design the architecture around it?
+- Check about interfaces!

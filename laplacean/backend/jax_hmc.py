@@ -9,9 +9,6 @@ from laplacean.backend.base import HMC, PotentialFn, GradientFn
 import seaborn as sns
 import matplotlib.pyplot as plt
 
-
-#TODO: Fix and understand key management in jax
-
 class JaxHMC(HMC):
 
     def __init__(self, key: jax.random.key):
