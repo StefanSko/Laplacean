@@ -1,20 +1,44 @@
-from typing import Protocol, Callable, Union
-import numpy as np
-import jax.numpy as jnp
+from dataclasses import dataclass
+from typing import Protocol, Callable, Tuple, TypeVar, Generic
 
-ArrayLike = Union[np.ndarray, jnp.ndarray]
+class ArrayLike(Protocol):
+    def __getitem__(self, key) -> 'ArrayLike': ...
+    def __setitem__(self, key, value) -> None: ...
+    def __add__(self, other: 'ArrayLike') -> 'ArrayLike': ...
+    def __sub__(self, other: 'ArrayLike') -> 'ArrayLike': ...
+    def __mul__(self, other: 'ArrayLike') -> 'ArrayLike': ...
+    def __truediv__(self, other: 'ArrayLike') -> 'ArrayLike': ...
+    def __neg__(self) -> 'ArrayLike': ...
+    @property
+    def shape(self) -> Tuple[int, ...]: ...
+    def dot(self, other: 'ArrayLike') -> 'ArrayLike': ...
 
+
+T = TypeVar('T', bound=ArrayLike)
 
 # Define type annotations for clarity
-PotentialFn = Callable[[ArrayLike], float]
-GradientFn = Callable[[ArrayLike], ArrayLike]
+PotentialFn = Callable[[T], float]
+GradientFn = Callable[[T], T]
 
-class HMC(Protocol):
+@dataclass
+class BaseHMCInput(Generic[T]):
+    U: PotentialFn
+    grad_U: GradientFn
+    epsilon: float
+    L: int
+    current_q: T
 
-    def hmc(self, U: PotentialFn, grad_U: GradientFn, epsilon: float, L: int, current_q: ArrayLike) -> ArrayLike:
+@dataclass
+class BaseHMCOuput(Generic[T]):
+    q: T
+
+
+class HMC(Protocol, Generic[T]):
+
+    def hmc(self, input: BaseHMCInput[T]) -> BaseHMCOuput[T]:
         pass
 
-    def run_hmc(self, U: PotentialFn, grad_U: GradientFn, epsilon: float, L: int, initial_q: ArrayLike, num_samples: int) -> ArrayLike:
+    def run_hmc(self, input: BaseHMCInput[T], num_samples: int) -> ArrayLike:
         pass
 
 
