@@ -1,3 +1,4 @@
+from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Protocol, Callable, Tuple, TypeVar, Generic
 
@@ -33,12 +34,21 @@ class BaseHMCOuput(Generic[T]):
     q: T
 
 
-class HMC(Protocol, Generic[T]):
+class HMCProtocol(Protocol[T]):
 
     def hmc(self, input: BaseHMCInput[T]) -> BaseHMCOuput[T]:
         pass
 
-    def run_hmc(self, input: BaseHMCInput[T], num_samples: int) -> ArrayLike:
+    def run_hmc(self, input: BaseHMCInput[T], num_samples: int) -> T:
+        pass
+
+class AbstractHMC(ABC, HMCProtocol[T]):
+
+    @abstractmethod
+    def hmc(self, input: BaseHMCInput[T]) -> BaseHMCOuput[T]:
         pass
 
 
+    @abstractmethod
+    def run_hmc(self, input: BaseHMCInput[T], num_samples: int) -> T:
+        pass
