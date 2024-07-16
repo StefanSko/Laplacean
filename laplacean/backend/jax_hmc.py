@@ -1,27 +1,31 @@
+from dataclasses import dataclass
 import jax
 import jax.numpy as jnp
 from jaxtyping import Array, Float
 
 import jax.random as random
-from laplacean.backend.base import HMC, PotentialFn, GradientFn
+from laplacean.backend.base import HMCProtocol, BaseHMCInput, BaseHMCOuput
 
 
 import seaborn as sns
 import matplotlib.pyplot as plt
 
-class JaxHMC(HMC):
+@dataclass
+class JaxHMCInput(BaseHMCInput[Array]):
+    key: jax.random.key
 
-    def __init__(self, key: jax.random.key):
-        self.key = key
+@dataclass
+class JaxHMCOuput(BaseHMCOuput[Array]):
+    key: jax.random.key
 
-    def _hmc_step(self, U: PotentialFn, grad_U: GradientFn, epsilon: Float, L: int, current_q: Array, key: jax.random.key) -> Array:
-        q = jnp.array(current_q)
-        key, subkey = random.split(key)
+class JaxHMC(HMCProtocol[Array]):
+
+    def hmc_step(self, input: JaxHMCInput) -> JaxHMCOuput:
+        q = input.current_q
+        key, subkey = random.split(input.key)
         p = random.normal(subkey, q.shape)
-
-        jax.debug.print("key: {key}", key = key)
-
-
+        epsilon = input.epsilon
+        L = input.L
         current_p = p
         # Make a half step for momentum at the beginning
         p = p - epsilon * grad_U(q) / 2
@@ -37,36 +41,27 @@ class JaxHMC(HMC):
         p = p - epsilon * grad_U(q) / 2
         # Negate momentum at end of trajectory to make the proposal symmetric
         p = -p
-        jax.debug.print("p: {p}", p = p)
-        jax.debug.print("q: {q}", q = q)
         # Evaluate potential and kinetic energies at start and end of trajectory
-        current_U = U(current_q)
-        jax.debug.print("U: {U}", U = current_U)
+        current_U = U(input.current_q)
         current_K = jnp.sum(current_p ** 2) / 2
-        jax.debug.print("K: {K}", K = current_K)
         proposed_U = U(q)
-        jax.debug.print("prop_U: {prop_U}", prop_U = proposed_U)
         proposed_K = jnp.sum(p ** 2) / 2
-        jax.debug.print("prop_K: {prop_K}", prop_K = proposed_K)
         # Accept or reject the state at the end of trajectory, returning either
         # the position at the end of the trajectory or the initial position
         accept_prob = jnp.exp(current_U - proposed_U + current_K - proposed_K)
-        print("====================")
-        return q, accept_prob, key
-    
-    def hmc(self, U: PotentialFn, grad_U: GradientFn, epsilon: float, L: int, current_q: Array) -> Array:
-        q, accept_prob, self.key = self._hmc_step(U, grad_U, epsilon, L, current_q, self.key)
-        self.key, subkey = random.split(self.key)
+        key, subkey = random.split(key)
         accept = random.uniform(subkey) < accept_prob
-        q_new = jax.lax.cond(accept, lambda _: q, lambda _: current_q, operand=None)
-        return q_new
+        q_new = jax.lax.cond(accept, lambda _: q, lambda _: input.current_q, operand=None)
+        return JaxHMCOuput(q=q_new, key=key)
+        
 
-    def run_hmc(self, U: PotentialFn, grad_U: GradientFn, epsilon: float, L: int, initial_q: Array, num_samples: int) -> Array:
+    def run_hmc(self, input: JaxHMCInput, num_samples: int) -> Array:
         def body_fun(carry, _):
-            q, key = carry
-            q_new = self.hmc(U, grad_U, epsilon, L, q)
-            return (q_new, key), q_new
-        _, samples = jax.lax.scan(body_fun, (initial_q, self.key), jnp.arange(num_samples))
+            input, key = carry
+            output = self.hmc_step(JaxHMCInput(U=input.U, grad_U=input.grad_U, epsilon=input.epsilon, L=input.L, current_q=input.current_q, key=key))
+            return (output, output.key), output.q
+        key, subkey = random.split(input.key)
+        _, samples = jax.lax.scan(body_fun, (input, subkey), jnp.zeros(num_samples))
         return samples
 
 
@@ -81,8 +76,10 @@ def grad_U(q: Array) -> Array:
 
 initial_q = jnp.array([1.])
 
-hmc = JaxHMC(random.PRNGKey(0))
-samples = hmc.run_hmc(U, grad_U, 0.1, 10, initial_q, 2)
+#TODO: Fix the issue with JaxHMCInput not being a valid type for jax	
+hmc: HMCProtocol[Array] = JaxHMC()
+input: JaxHMCInput = JaxHMCInput(U=U, grad_U=grad_U, epsilon=0.1, L=10, current_q=initial_q, key=random.PRNGKey(0))
+samples = hmc.run_hmc(input, 1000)
 
 print(jnp.mean(samples)) 
 print(jnp.var(samples))
