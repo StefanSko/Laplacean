@@ -1,2 +1,5 @@
 /.idea/
 /Laplacean.iml
+/.mypy_cache/
+/.pytest_cache/
+/.vscode/
