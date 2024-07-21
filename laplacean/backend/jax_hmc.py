@@ -1,24 +1,43 @@
 from dataclasses import dataclass
+from typing import Callable
 import jax
 import jax.numpy as jnp
 from jaxtyping import Array, Float
+import jax_dataclasses as jdc
+
 
 import jax.random as random
-from laplacean.backend.base import HMCProtocol, BaseHMCInput, BaseHMCOuput
-
 
 import seaborn as sns
 import matplotlib.pyplot as plt
 
-@dataclass
-class JaxHMCInput(BaseHMCInput[Array]):
-    key: jax.random.key
+# Define type annotations for clarity
+PotentialFn = Callable[[Array], float]
+GradientFn = Callable[[Array], Array]
 
-@dataclass
-class JaxHMCOuput(BaseHMCOuput[Array]):
-    key: jax.random.key
+@jdc.pytree_dataclass
+class JaxHMCInput:
+    U: PotentialFn
+    grad_U: GradientFn
+    epsilon: float
+    L: int
+    current_q: Array
+    key: Callable[[int], Array]
 
-class JaxHMC(HMCProtocol[Array]):
+@jdc.pytree_dataclass
+class JaxHMCOuput:
+    q: Array
+    key: Callable[[int], Array]
+
+class HMCProtocol:
+
+    def hmc(self, input: JaxHMCInput) -> JaxHMCOuput:
+        pass
+
+    def run_hmc(self, input: JaxHMCInput, num_samples: int) -> Array:
+        pass
+
+class JaxHMC:
 
     def hmc_step(self, input: JaxHMCInput) -> JaxHMCOuput:
         q = input.current_q
@@ -77,7 +96,7 @@ def grad_U(q: Array) -> Array:
 initial_q = jnp.array([1.])
 
 #TODO: Fix the issue with JaxHMCInput not being a valid type for jax	
-hmc: HMCProtocol[Array] = JaxHMC()
+hmc: JaxHMC = JaxHMC()
 input: JaxHMCInput = JaxHMCInput(U=U, grad_U=grad_U, epsilon=0.1, L=10, current_q=initial_q, key=random.PRNGKey(0))
 samples = hmc.run_hmc(input, 1000)
 
