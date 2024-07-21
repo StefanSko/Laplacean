@@ -11,6 +11,7 @@ jax = "^0.4.28"
 jaxlib = "^0.4.28"
 jaxtyping = "^0.2.28"
 seaborn = "^0.13.2"
+jax_dataclasses = "^1.6.1"
 
 
 [tool.poetry.group.dev.dependencies]
