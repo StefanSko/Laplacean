@@ -19,12 +19,12 @@ class JaxHMCInput:
     epsilon: float
     L: int
     current_q: Array
-    key: Callable[[int], Array]
+    key: Array
 
 @jdc.pytree_dataclass
 class JaxHMCOuput:
     q: Array
-    key: Callable[[int], Array]
+    key: Array
 
 class HMCProtocol:
 
@@ -50,14 +50,18 @@ class JaxHMC:
         # Make a half step for momentum at the beginning
         p = p - epsilon * self.grad_U(q) / 2
 
-        for i in range(L):
+        def loop_body(_, carry):
+            q, p = carry
             # Make a full step for the position
             q = q + epsilon * p
-            # Make a full step for the momentum, except at the end of trajectory
-            if i != L - 1:
-                p = p - epsilon * self.grad_U(q)
+            # Make a full step for the momentum
+            p = p - epsilon * self.grad_U(q)
+            return q, p
+
+        q, p = jax.lax.fori_loop(0, L-1, loop_body, (q, p))
         
         # Make a half step for momentum at the end
+        q = q + epsilon * p
         p = p - epsilon * self.grad_U(q) / 2
         # Negate momentum at end of trajectory to make the proposal symmetric
         p = -p
