@@ -81,6 +81,7 @@ class JaxHMC:
 
     def run_hmc(self, input: JaxHMCInput, num_samples: int) -> Array:
         def body_fun(carry, _):
+            #TODO: Fix the issue with JaxHMCInput and JaxHMCOuput not differing in type for the carry and output
             input, key = carry
             output = self.hmc_step(JaxHMCInput(epsilon=input.epsilon, L=input.L, current_q=input.current_q, key=key))
             return (output, output.key), output.q
@@ -102,7 +103,6 @@ def grad_U(q: jnp.array) -> jnp.array:
 
 initial_q = jnp.array([1.])
 
-#TODO: Fix the issue with JaxHMCInput not being a valid type for jax	
 hmc: HMCProtocol = JaxHMC(U=U, grad_U=grad_U)
 input: JaxHMCInput = JaxHMCInput(epsilon=0.1, L=10, current_q=initial_q, key=random.PRNGKey(0))
 samples = hmc.run_hmc(input, 1000)
