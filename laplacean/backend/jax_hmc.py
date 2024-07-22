@@ -1,4 +1,3 @@
-from dataclasses import dataclass
 from typing import Callable
 import jax
 import jax.numpy as jnp
@@ -17,8 +16,6 @@ GradientFn = Callable[[Array], Array]
 
 @jdc.pytree_dataclass
 class JaxHMCInput:
-    U: PotentialFn
-    grad_U: GradientFn
     epsilon: float
     L: int
     current_q: Array
@@ -39,6 +36,10 @@ class HMCProtocol:
 
 class JaxHMC:
 
+    def __init__(self, U: PotentialFn, grad_U: GradientFn):
+        self.U = U
+        self.grad_U = grad_U
+
     def hmc_step(self, input: JaxHMCInput) -> JaxHMCOuput:
         q = input.current_q
         key, subkey = random.split(input.key)
@@ -47,23 +48,23 @@ class JaxHMC:
         L = input.L
         current_p = p
         # Make a half step for momentum at the beginning
-        p = p - epsilon * grad_U(q) / 2
+        p = p - epsilon * self.grad_U(q) / 2
 
         for i in range(L):
             # Make a full step for the position
             q = q + epsilon * p
             # Make a full step for the momentum, except at the end of trajectory
             if i != L - 1:
-                p = p - epsilon * grad_U(q)
+                p = p - epsilon * self.grad_U(q)
         
         # Make a half step for momentum at the end
-        p = p - epsilon * grad_U(q) / 2
+        p = p - epsilon * self.grad_U(q) / 2
         # Negate momentum at end of trajectory to make the proposal symmetric
         p = -p
         # Evaluate potential and kinetic energies at start and end of trajectory
-        current_U = U(input.current_q)
+        current_U = self.U(input.current_q)
         current_K = jnp.sum(current_p ** 2) / 2
-        proposed_U = U(q)
+        proposed_U = self.U(q)
         proposed_K = jnp.sum(p ** 2) / 2
         # Accept or reject the state at the end of trajectory, returning either
         # the position at the end of the trajectory or the initial position
@@ -77,7 +78,7 @@ class JaxHMC:
     def run_hmc(self, input: JaxHMCInput, num_samples: int) -> Array:
         def body_fun(carry, _):
             input, key = carry
-            output = self.hmc_step(JaxHMCInput(U=input.U, grad_U=input.grad_U, epsilon=input.epsilon, L=input.L, current_q=input.current_q, key=key))
+            output = self.hmc_step(JaxHMCInput(epsilon=input.epsilon, L=input.L, current_q=input.current_q, key=key))
             return (output, output.key), output.q
         key, subkey = random.split(input.key)
         _, samples = jax.lax.scan(body_fun, (input, subkey), jnp.zeros(num_samples))
@@ -87,17 +88,19 @@ class JaxHMC:
 #
 # Example usage for potential energy function corresponding to a standard normal distribution with mean 0 and variance 1
 # U needs to return the negative log of the density
-def U(q: Array) -> Float:
+@jax.jit
+def U(q: jnp.array) -> Float:
     return 0.5 * jnp.sum(q ** 2)
 
-def grad_U(q: Array) -> Array:
+@jax.jit
+def grad_U(q: jnp.array) -> jnp.array:
     return jax.grad(U)(q)
 
 initial_q = jnp.array([1.])
 
 #TODO: Fix the issue with JaxHMCInput not being a valid type for jax	
-hmc: JaxHMC = JaxHMC()
-input: JaxHMCInput = JaxHMCInput(U=U, grad_U=grad_U, epsilon=0.1, L=10, current_q=initial_q, key=random.PRNGKey(0))
+hmc: HMCProtocol = JaxHMC(U=U, grad_U=grad_U)
+input: JaxHMCInput = JaxHMCInput(epsilon=0.1, L=10, current_q=initial_q, key=random.PRNGKey(0))
 samples = hmc.run_hmc(input, 1000)
 
 print(jnp.mean(samples)) 
