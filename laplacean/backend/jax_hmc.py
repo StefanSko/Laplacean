@@ -15,32 +15,28 @@ PotentialFn = Callable[[Array], float]
 GradientFn = Callable[[Array], Array]
 
 @jdc.pytree_dataclass
-class JaxHMCInput:
+class JaxHMCData:
     epsilon: float
     L: int
     current_q: Array
     key: Array
 
-@jdc.pytree_dataclass
-class JaxHMCOuput:
-    q: Array
-    key: Array
 
 class HMCProtocol:
 
-    def hmc(self, input: JaxHMCInput) -> JaxHMCOuput:
+    def hmc(self, input: JaxHMCData) -> JaxHMCData:
         pass
 
-    def run_hmc(self, input: JaxHMCInput, num_samples: int) -> Array:
+    def run_hmc(self, input: JaxHMCData, num_samples: int) -> Array:
         pass
 
-class JaxHMC:
+class JaxHMC(HMCProtocol):
 
     def __init__(self, U: PotentialFn, grad_U: GradientFn):
         self.U = U
         self.grad_U = grad_U
 
-    def hmc_step(self, input: JaxHMCInput) -> JaxHMCOuput:
+    def hmc_step(self, input: JaxHMCData) -> JaxHMCData:
         q = input.current_q
         key, subkey = random.split(input.key)
         p = random.normal(subkey, q.shape)
@@ -76,17 +72,15 @@ class JaxHMC:
         key, subkey = random.split(key)
         accept = random.uniform(subkey) < accept_prob
         q_new = jax.lax.cond(accept, lambda _: q, lambda _: input.current_q, operand=None)
-        return JaxHMCOuput(q=q_new, key=key)
+        return JaxHMCData(epsilon=input.epsilon, L=input.L, current_q=q_new, key=key)
         
 
-    def run_hmc(self, input: JaxHMCInput, num_samples: int) -> Array:
+    def run_hmc(self, input: JaxHMCData, num_samples: int) -> Array:
         def body_fun(carry, _):
-            #TODO: Fix the issue with JaxHMCInput and JaxHMCOuput not differing in type for the carry and output
             input, key = carry
-            output = self.hmc_step(JaxHMCInput(epsilon=input.epsilon, L=input.L, current_q=input.current_q, key=key))
-            return (output, output.key), output.q
-        key, subkey = random.split(input.key)
-        _, samples = jax.lax.scan(body_fun, (input, subkey), jnp.zeros(num_samples))
+            output = self.hmc_step(JaxHMCData(epsilon=input.epsilon, L=input.L, current_q=input.current_q, key=key))
+            return (output, output.key), output.current_q
+        _, samples = jax.lax.scan(body_fun, (input, input.key), jnp.zeros(num_samples))
         return samples
 
 
@@ -104,7 +98,7 @@ def grad_U(q: jnp.array) -> jnp.array:
 initial_q = jnp.array([1.])
 
 hmc: HMCProtocol = JaxHMC(U=U, grad_U=grad_U)
-input: JaxHMCInput = JaxHMCInput(epsilon=0.1, L=10, current_q=initial_q, key=random.PRNGKey(0))
+input: JaxHMCData = JaxHMCData(epsilon=0.1, L=10, current_q=initial_q, key=random.PRNGKey(0))
 samples = hmc.run_hmc(input, 1000)
 
 print(jnp.mean(samples)) 
