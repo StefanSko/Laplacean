@@ -1,7 +1,7 @@
 from typing import Callable
 import jax
 import jax.numpy as jnp
-from jaxtyping import Array, Float
+from jaxtyping import Array
 import jax_dataclasses as jdc
 
 
@@ -24,11 +24,11 @@ class JaxHMCData:
 
 class HMCProtocol:
 
-    def hmc(self, input: JaxHMCData) -> JaxHMCData:
-        pass
+    def hmc(self, input: JaxHMCData) -> JaxHMCData:  # type: ignore
+        ...
 
-    def run_hmc(self, input: JaxHMCData, num_samples: int) -> Array:
-        pass
+    def run_hmc(self, input: JaxHMCData, num_samples: int) -> Array:  # type: ignore
+        ...
 
 class JaxHMC(HMCProtocol):
 
@@ -88,11 +88,11 @@ class JaxHMC(HMCProtocol):
 # Example usage for potential energy function corresponding to a standard normal distribution with mean 0 and variance 1
 # U needs to return the negative log of the density
 @jax.jit
-def U(q: jnp.array) -> Float:
+def U(q: Array) -> Array:
     return 0.5 * jnp.sum(q ** 2)
 
 @jax.jit
-def grad_U(q: jnp.array) -> jnp.array:
+def grad_U(q: Array) -> Array:
     return jax.grad(U)(q)
 
 initial_q = jnp.array([1.])
