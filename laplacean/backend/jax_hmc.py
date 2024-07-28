@@ -24,7 +24,7 @@ class HMCProtocol:
     def hmc(self, input: JaxHMCData) -> JaxHMCData:  # type: ignore
         ...
 
-    def run_hmc(self, input: JaxHMCData, num_samples: int) -> Array:  # type: ignore
+    def run_hmc(self, input: JaxHMCData, num_samples: int, num_warmup: int) -> Array:  # type: ignore
         ...
 
 class JaxHMC(HMCProtocol):
@@ -74,12 +74,22 @@ class JaxHMC(HMCProtocol):
         accept = jnp.log(random.uniform(subkey)) < log_accept_prob
         q_new = jax.lax.cond(accept, lambda _: q, lambda _: input.current_q, operand=None)
         return JaxHMCData(epsilon=input.epsilon, L=input.L, current_q=q_new, key=key)
-        
 
-    def run_hmc(self, input: JaxHMCData, num_samples: int) -> Array:
-        def body_fun(carry, _):
+    def run_hmc(self, input: JaxHMCData, num_samples: int, num_warmup: int) -> Array:
+        # Warm-up phase
+        def warmup_body(carry, _):
             input, key = carry
             output = self.hmc_step(JaxHMCData(epsilon=input.epsilon, L=input.L, current_q=input.current_q, key=key))
             return (output, output.key), output.current_q
-        _, samples = jax.lax.scan(body_fun, (input, input.key), jnp.zeros(num_samples))
+
+        (input, _), _ = jax.lax.scan(warmup_body, (input, input.key), jnp.zeros(num_warmup))
+
+        # Sampling phase
+        def sampling_body(carry, _):
+            input, key = carry
+            output = self.hmc_step(JaxHMCData(epsilon=input.epsilon, L=input.L, current_q=input.current_q, key=key))
+            return (output, output.key), output.current_q
+
+        (_, key), samples = jax.lax.scan(sampling_body, (input, input.key), jnp.zeros(num_samples))
+
         return samples
