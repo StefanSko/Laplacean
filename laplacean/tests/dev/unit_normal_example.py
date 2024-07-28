@@ -22,7 +22,7 @@ initial_q = jnp.array([1.])
 
 hmc: HMCProtocol = JaxHMC(U=U, grad_U=grad_U)
 input: JaxHMCData = JaxHMCData(epsilon=0.1, L=10, current_q=initial_q, key=random.PRNGKey(0))
-samples = hmc.run_hmc(input, 1000)
+samples = hmc.run_hmc(input, 1000, 500)
 
 print(jnp.mean(samples))
 print(jnp.var(samples))

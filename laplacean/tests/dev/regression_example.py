@@ -36,7 +36,7 @@ hmc: HMCProtocol = JaxHMC(U=U, grad_U=grad_U)
 input: JaxHMCData = JaxHMCData(epsilon=0.01, L=12, current_q=initial_params, key=random.PRNGKey(1))
 
 # Draw samples from the posterior distribution
-samples = hmc.run_hmc(input, 4000)
+samples = hmc.run_hmc(input, 4000, 500)
 
 # Compute the mean and standard deviation of the posterior distribution
 alpha_mean, beta_mean, log_sigma_mean = jnp.mean(samples, axis=0)
