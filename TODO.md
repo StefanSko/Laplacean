@@ -1,2 +1,1 @@
-- check estimation of sigma in regression_example.py. 
-  - looks to be quite instable with a long tail
+- check posterior interval
