@@ -65,9 +65,13 @@ class JaxHMC(HMCProtocol):
         proposed_K = jnp.sum(p ** 2) / 2
         # Accept or reject the state at the end of trajectory, returning either
         # the position at the end of the trajectory or the initial position
-        accept_prob = jnp.exp(current_U - proposed_U + current_K - proposed_K)
+        # Compute log acceptance probability
+        log_accept_prob = current_U - proposed_U + current_K - proposed_K
+        log_accept_prob = jnp.where(jnp.isfinite(log_accept_prob), log_accept_prob,
+                                    -jnp.inf)  # handle non-finite values
+        # Accept or reject the state at the end of trajectory
         key, subkey = random.split(key)
-        accept = random.uniform(subkey) < accept_prob
+        accept = jnp.log(random.uniform(subkey)) < log_accept_prob
         q_new = jax.lax.cond(accept, lambda _: q, lambda _: input.current_q, operand=None)
         return JaxHMCData(epsilon=input.epsilon, L=input.L, current_q=q_new, key=key)
         
