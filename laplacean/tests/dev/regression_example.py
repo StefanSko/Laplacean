@@ -24,7 +24,7 @@ def U(params: Array) -> float:
     log_likelihood = -0.5 * n * jnp.log(2 * jnp.pi * sigma**2) - 0.5 * jnp.sum((y - y_pred)**2) / sigma**2
     log_prior_alpha = -0.5 * alpha**2
     log_prior_beta = -0.5 * beta**2
-    log_prior_sigma = -0.5 * log_sigma**2 / 1.0 
+    log_prior_sigma = -sigma
     return -(log_likelihood + log_prior_alpha + log_prior_beta + log_prior_sigma)
 
 # Define the gradient of the potential energy function
