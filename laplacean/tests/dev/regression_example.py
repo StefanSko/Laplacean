@@ -8,7 +8,7 @@ from matplotlib import pyplot as plt
 from laplacean.backend.jax_hmc import HMCProtocol, JaxHMC, JaxHMCData
 
 # Generate some observed data
-n = 100
+n = 300
 x = jnp.linspace(0, 1, n)
 alpha_true = 1.0
 beta_true = 2.0
@@ -22,16 +22,16 @@ def U(params: Array) -> float:
     sigma = jnp.exp(log_sigma)
     y_pred = alpha + beta * x
     log_likelihood = -0.5 * n * jnp.log(2 * jnp.pi * sigma**2) - 0.5 * jnp.sum((y - y_pred)**2) / sigma**2
-    log_prior_alpha = -0.5 * alpha**2 / 10.0
-    log_prior_beta = -0.5 * beta**2 / 10.0
-    log_prior_sigma = 2 * jnp.log(sigma) - 0.5 * sigma**2 / 0.5
+    log_prior_alpha = -0.5 * alpha**2
+    log_prior_beta = -0.5 * beta**2
+    log_prior_sigma = -0.5 * log_sigma**2 / 1.0 
     return -(log_likelihood + log_prior_alpha + log_prior_beta + log_prior_sigma)
 
 # Define the gradient of the potential energy function
 grad_U = jax.grad(U)
 
 # Initialize the HMC sampler
-initial_params = jnp.array([0.0, 0.0, 0.0])
+initial_params = jnp.array([0.0, 0.0, jnp.log(0.5)])
 hmc: HMCProtocol = JaxHMC(U=U, grad_U=grad_U)
 input: JaxHMCData = JaxHMCData(epsilon=0.01, L=12, current_q=initial_params, key=random.PRNGKey(1))
 
@@ -52,7 +52,7 @@ print(f"sigma: {sigma_mean:.2f} +/- {sigma_std:.2f}")
 # Plot the posterior distribution of alpha and beta
 sns.kdeplot(samples[:, 0], label="alpha")
 sns.kdeplot(samples[:, 1], label="beta")
-sns.kdeplot(samples[:, 2], label="sigma")
+sns.kdeplot(jnp.exp(samples[:, 2]), label="sigma")
 plt.xlabel("Parameter value")
 plt.ylabel("Density")
 plt.title("Posterior distribution of alpha and beta")
