@@ -92,13 +92,15 @@ predict_vectorized = jax.vmap(predict_single_sample, in_axes=(0, None, None))
 # Generate predictions for all samples
 pred_samples = predict_vectorized(samples, x, key)
 
-pred_cred_interval = jnp.percentile(pred_samples, jnp.array([2.5, 97.5]), axis=0)
+# Compute the 89% credible interval
+lower_bound = jnp.percentile(pred_samples, 5.5, axis=0)
+upper_bound = jnp.percentile(pred_samples, 94.5, axis=0)
 
 
 # Plot predictive intervals
 plt.figure(figsize=(10, 6))
 plt.plot(x, y_mean, color='black', label='Mean regression line')
-plt.fill_between(x, pred_cred_interval[0, :], pred_cred_interval[1, :], color='gray', alpha=0.5, label='95% predictive interval')
+plt.fill_between(x, lower_bound, upper_bound, color='gray', alpha=0.5, label='95% predictive interval')
 plt.scatter(x, y, color='blue', label='Observed data')
 plt.xlabel('x')
 plt.ylabel('y')
