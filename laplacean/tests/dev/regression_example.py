@@ -17,6 +17,7 @@ epsilon = sigma_true * random.normal(random.PRNGKey(0), (n,))
 y = alpha_true + beta_true * x + epsilon
 
 # Define the potential energy function
+#@TODO: Fix for new potential energy
 def U(params: Array) -> float:
     alpha, beta, log_sigma = params
     sigma = jnp.exp(log_sigma)
