@@ -26,9 +26,8 @@ class PotentialEnergy:
             likelihood_func = noop_likelihood
             data = None
         self.potential_energy = create_potential_energy(prior_func, likelihood_func, data)
-
+    
     def __call__(self, q: Array) -> float:
         return self.potential_energy(q)
-
     def gradient(self, q: Array) -> Array:
         return jax.grad(self.__call__)(q)

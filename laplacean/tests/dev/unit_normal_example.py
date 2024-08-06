@@ -6,6 +6,7 @@ import seaborn as sns
 from matplotlib import pyplot as plt
 
 from laplacean.backend.jax_hmc import HMCProtocol, JaxHMC, JaxHMCData
+from potential_energy import PotentialEnergy
 
 
 # Example usage for potential energy function corresponding to a standard normal distribution with mean 0 and variance 1
@@ -14,13 +15,12 @@ from laplacean.backend.jax_hmc import HMCProtocol, JaxHMC, JaxHMCData
 def U(q: Array) -> Array:
     return 0.5 * jnp.sum(q ** 2)
 
-@jax.jit
-def grad_U(q: Array) -> Array:
-    return jax.grad(U)(q)
 
 initial_q = jnp.array([1.])
 
-hmc: HMCProtocol = JaxHMC(U=U, grad_U=grad_U)
+potential_energy: PotentialEnergy = PotentialEnergy(prior_func=U)
+
+hmc: HMCProtocol = JaxHMC(U=potential_energy)
 input: JaxHMCData = JaxHMCData(epsilon=0.1, L=10, current_q=initial_q, key=random.PRNGKey(0))
 samples = hmc.run_hmc(input, 1000, 500)
 
