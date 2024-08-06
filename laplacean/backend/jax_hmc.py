@@ -1,4 +1,3 @@
-from typing import Callable
 import jax
 import jax.numpy as jnp
 from jaxtyping import Array
@@ -7,9 +6,8 @@ import jax_dataclasses as jdc
 
 import jax.random as random
 
-# Define type annotations for clarity
-PotentialFn = Callable[[Array], float]
-GradientFn = Callable[[Array], Array]
+from potential_energy import PotentialEnergy
+
 
 @jdc.pytree_dataclass
 class JaxHMCData:
@@ -29,9 +27,8 @@ class HMCProtocol:
 
 class JaxHMC(HMCProtocol):
 
-    def __init__(self, U: PotentialFn, grad_U: GradientFn):
+    def __init__(self, U: PotentialEnergy):
         self.U = U
-        self.grad_U = grad_U
 
     def hmc_step(self, input: JaxHMCData) -> JaxHMCData:
         q = input.current_q
@@ -41,21 +38,21 @@ class JaxHMC(HMCProtocol):
         L = input.L
         current_p = p
         # Make a half step for momentum at the beginning
-        p = p - epsilon * self.grad_U(q) / 2
+        p = p - epsilon * self.U.gradient(q) / 2
 
         def loop_body(_, carry):
             q, p = carry
             # Make a full step for the position
             q = q + epsilon * p
             # Make a full step for the momentum
-            p = p - epsilon * self.grad_U(q)
+            p = p - epsilon * self.U.gradient(q)
             return q, p
 
         q, p = jax.lax.fori_loop(0, L-1, loop_body, (q, p))
         
         # Make a half step for momentum at the end
         q = q + epsilon * p
-        p = p - epsilon * self.grad_U(q) / 2
+        p = p - epsilon * self.U.gradient(q) / 2
         # Negate momentum at end of trajectory to make the proposal symmetric
         p = -p
         # Evaluate potential and kinetic energies at start and end of trajectory
