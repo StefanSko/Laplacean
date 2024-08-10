@@ -5,8 +5,10 @@ from jaxtyping import Array
 import seaborn as sns
 from matplotlib import pyplot as plt
 
-from laplacean.backend.jax_hmc import HMCProtocol, JaxHMC, JaxHMCData
-from potential_energy import PotentialEnergy
+from methods.hmc import step
+from methods.potential_energy import PotentialEnergy
+from sampler.sampling import Sampler
+from base.data import JaxHMCData
 
 
 # Example usage for potential energy function corresponding to a standard normal distribution with mean 0 and variance 1
@@ -16,13 +18,20 @@ def U(q: Array) -> Array:
     return 0.5 * jnp.sum(q ** 2)
 
 
+
 initial_q = jnp.array([1.])
+
+input: JaxHMCData = JaxHMCData(epsilon=0.1, L=10, current_q=initial_q, key=random.PRNGKey(0))
+sampler = Sampler()
+
+
 
 potential_energy: PotentialEnergy = PotentialEnergy(prior_func=U)
 
-hmc: HMCProtocol = JaxHMC(U=potential_energy)
-input: JaxHMCData = JaxHMCData(epsilon=0.1, L=10, current_q=initial_q, key=random.PRNGKey(0))
-samples = hmc.run_hmc(input, 1000, 500)
+t = step(potential_energy, input)
+
+samples = sampler(step, input, potential_energy)
+
 
 print(jnp.mean(samples))
 print(jnp.var(samples))

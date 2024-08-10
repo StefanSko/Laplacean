@@ -1,13 +1,9 @@
-from typing import Callable, Optional
+from typing import Optional, Tuple, Any
 
 from jaxtyping import Array
 import jax
 
-
-# Define the types
-PriorFunc = Callable[[Array], float]
-LikelihoodFunc = Callable[[Array, Array], float]
-PotentialEnergyFunc = Callable[[Array], float]
+from base.functions import PriorFunc, LikelihoodFunc, PotentialEnergyFunc
 
 
 def create_potential_energy(prior_func: PriorFunc, likelihood_func: LikelihoodFunc, data: Optional[Array]) -> PotentialEnergyFunc:
@@ -20,6 +16,7 @@ def create_potential_energy(prior_func: PriorFunc, likelihood_func: LikelihoodFu
 def noop_likelihood(q: Array, data: Array) -> float:
     return 0.0
 
+
 class PotentialEnergy:
     def __init__(self, prior_func: PriorFunc, likelihood_func: Optional[LikelihoodFunc] = None, data: Optional[Array] = None):
         if likelihood_func is None or data is None:
@@ -31,3 +28,18 @@ class PotentialEnergy:
         return self.potential_energy(q)
     def gradient(self, q: Array) -> Array:
         return jax.grad(self.__call__)(q)
+    
+# Register the custom pytree
+def potential_energy_flatten(pe: PotentialEnergy) -> Tuple[Tuple[PotentialEnergyFunc], None]:
+    return ((pe.potential_energy,),), None
+
+def potential_energy_unflatten(aux_data: Any, children: Tuple[Tuple[PotentialEnergyFunc],]) -> PotentialEnergy:
+    pe = PotentialEnergy(None)
+    pe.potential_energy = children[0][0]
+    return pe
+
+jax.tree_util.register_pytree_node(
+    PotentialEnergy,
+    potential_energy_flatten,
+    potential_energy_unflatten
+)

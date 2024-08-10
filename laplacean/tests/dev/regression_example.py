@@ -5,9 +5,9 @@ from jaxtyping import Array
 import seaborn as sns
 from matplotlib import pyplot as plt
 
-from laplacean.backend.jax_hmc import HMCProtocol, JaxHMC, JaxHMCData
+from sampling import HMCProtocol, JaxHMC, JaxHMCData
 
-# Generate some observed data
+# Generate some observed base
 n = 300
 x = jnp.linspace(0, 1, n)
 alpha_true = 1.0
@@ -62,7 +62,7 @@ plt.show()
 
 # Plot: Mean regression line with 95% confidence interval
 plt.figure(figsize=(10, 6))
-sns.scatterplot(x=x, y=y, color='blue', label='Observed data')
+sns.scatterplot(x=x, y=y, color='blue', label='Observed base')
 
 # Plot the mean regression line
 y_mean = alpha_mean + beta_mean * x
@@ -102,7 +102,7 @@ upper_bound = jnp.percentile(pred_samples, 94.5, axis=0)
 plt.figure(figsize=(10, 6))
 plt.plot(x, y_mean, color='black', label='Mean regression line')
 plt.fill_between(x, lower_bound, upper_bound, color='gray', alpha=0.5, label='95% predictive interval')
-plt.scatter(x, y, color='blue', label='Observed data')
+plt.scatter(x, y, color='blue', label='Observed base')
 plt.xlabel('x')
 plt.ylabel('y')
 plt.legend()
