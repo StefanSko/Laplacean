@@ -1,3 +1,5 @@
+import timeit
+
 import jax
 import jax.numpy as jnp
 import jax.random as random
@@ -28,10 +30,23 @@ sampler = Sampler()
 
 potential_energy: PotentialEnergy = PotentialEnergy(prior_func=U)
 
-t = step(potential_energy, input)
-
 samples = sampler(step, input, potential_energy)
 
+def function():
+    sampler(step, input, potential_energy)
+
+# Use timeit to time the function 100 times
+times = timeit.repeat("function()", setup="from __main__ import function", repeat=100, number=1)
+
+# Calculate statistics
+min_time = min(times)
+max_time = max(times)
+avg_time = sum(times) / len(times)
+
+# Print out the statistics
+print(f"Min Time: {min_time:.6f} seconds")
+print(f"Max Time: {max_time:.6f} seconds")
+print(f"Avg Time: {avg_time:.6f} seconds")
 
 print(jnp.mean(samples))
 print(jnp.var(samples))

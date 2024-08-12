@@ -1,6 +1,6 @@
 from typing import Callable
 
-from jax import random, lax, jit
+from jax import random, lax
 import jax.numpy as jnp
 
 
@@ -10,7 +10,6 @@ from base.data import JaxHMCData
 
 StepFunc = Callable[[PotentialEnergy, JaxHMCData], JaxHMCData]
 
-@jit
 def step(U: PotentialEnergy, input: JaxHMCData) -> JaxHMCData:
     q = input.current_q
     key, subkey = random.split(input.key)

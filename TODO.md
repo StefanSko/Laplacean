@@ -24,5 +24,20 @@ test_energy = jit_test_f(1)
 print(test_energy)
 ```
 
+with jit takes:
+```
+Min Time: 0.239738 seconds
+Max Time: 0.313666 seconds
+Avg Time: 0.252053 seconds
+```
+
+without jit takes:
+```
+Min Time: 0.239547 seconds
+Max Time: 0.258471 seconds
+Avg Time: 0.245333 seconds
+```
+-does not seem to make much difference! try to understand why
+
 - still not fully happy with current structure:
   - sampler should just run a function basically, no need for it to know about the input data which should be encapsulated in the step
