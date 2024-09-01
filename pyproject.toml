@@ -1,9 +1,14 @@
 [tool.poetry]
-name = "laplacean"
+name = "Laplacean"
 version = "0.1.0"
 description = ""
 authors = ["Stefan Skoruppa <Stefan.sko@gmail.com>"]
 readme = "README.md"
+packages = [
+    { include = "base", from = "src" },
+    { include = "methods", from = "src" },
+    { include = "sampler", from = "src" }
+]
 
 [tool.poetry.dependencies]
 python = "^3.12"
@@ -11,7 +16,7 @@ jax = "^0.4.28"
 jaxlib = "^0.4.28"
 jaxtyping = "^0.2.28"
 jax_dataclasses = "^1.6.1"
-jupyter = "^1.0.0"
+equinox = "^0.11.5"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.2.2"

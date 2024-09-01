@@ -1,16 +1,18 @@
 from typing import Callable
 
-from jax import random, lax
+from jax import random, lax, jit
 import jax.numpy as jnp
 
+import equinox as eqx
 
-from methods.potential_energy import PotentialEnergy
+from methods.potential_energy import LaplaceanPotentialEnergy
 from base.data import JaxHMCData
 
 
-StepFunc = Callable[[PotentialEnergy, JaxHMCData], JaxHMCData]
+StepFunc = Callable[[LaplaceanPotentialEnergy, JaxHMCData], JaxHMCData]
 
-def step(U: PotentialEnergy, input: JaxHMCData) -> JaxHMCData:
+
+def step(U: LaplaceanPotentialEnergy, input: JaxHMCData) -> JaxHMCData:
     q = input.current_q
     key, subkey = random.split(input.key)
     p = random.normal(subkey, q.shape)
@@ -51,3 +53,6 @@ def step(U: PotentialEnergy, input: JaxHMCData) -> JaxHMCData:
     accept = jnp.log(random.uniform(subkey)) < log_accept_prob
     q_new = lax.cond(accept, lambda _: q, lambda _: input.current_q, operand=None)
     return JaxHMCData(epsilon=input.epsilon, L=input.L, current_q=q_new, key=key)
+
+# Convert step to an Equinox filter function
+step_filter = eqx.filter_jit(step)

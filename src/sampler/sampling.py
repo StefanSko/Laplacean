@@ -1,18 +1,20 @@
+from typing import Callable
 import jax
 import jax.numpy as jnp
 from jaxtyping import Array
 
 from methods.hmc import StepFunc
-from methods.potential_energy import PotentialEnergy
+from methods.potential_energy import LaplaceanPotentialEnergy
 from base.data import JaxHMCData
 
+import equinox as eqx
 
-class Sampler:
 
-    def __call__(self, step: StepFunc, init: JaxHMCData, energy: PotentialEnergy, 
+class Sampler(eqx.Module):
+
+    def __call__(self, step: Callable, init: JaxHMCData, energy: LaplaceanPotentialEnergy, 
                  num_warmup: int = 500, num_samples: int = 1000) -> Array:
         # Warm-up phase
-        @jax.jit
         def warmup():
             def warmup_body(carry, _):
                 input, key = carry
@@ -25,7 +27,6 @@ class Sampler:
         input = warmup()
 
         # Sampling phase
-        @jax.jit
         def sampling():
             def sampling_body(carry, _):
                 input, key = carry

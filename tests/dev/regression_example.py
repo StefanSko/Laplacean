@@ -5,7 +5,7 @@ from jaxtyping import Array
 import seaborn as sns
 from matplotlib import pyplot as plt
 
-from sampling import HMCProtocol, JaxHMC, JaxHMCData
+from sampling import HMCProtocol, JaxHMC
 
 # Generate some observed base
 n = 300
@@ -34,7 +34,7 @@ grad_U = jax.grad(U)
 # Initialize the HMC sampler
 initial_params = jnp.array([0.0, 0.0, jnp.log(0.5)])
 hmc: HMCProtocol = JaxHMC(U=U, grad_U=grad_U)
-input: JaxHMCData = JaxHMCData(epsilon=0.01, L=12, current_q=initial_params, key=random.PRNGKey(1))
+input: JaxHMC = JaxHMC(epsilon=0.01, L=12, current_q=initial_params, key=random.PRNGKey(1))
 
 # Draw samples from the posterior distribution
 samples = hmc.run_hmc(input, 4000, 500)
