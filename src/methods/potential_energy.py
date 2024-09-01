@@ -22,13 +22,18 @@ class LaplaceanPotentialEnergy(eqx.Module):
         self.log_prior = log_prior
         self.log_likelihood = log_likelihood
 
-    @eqx.filter_jit
+    #@eqx.filter_jit
     def __call__(self, q: Array) -> Float[Array, ""]:  # noqa: F722
         return self.log_prior(q) + self.log_likelihood(q)
 
-    @eqx.filter_jit
+    #@eqx.filter_jit
     def gradient(self, q: Array) -> Array:
         return jax.grad(self.__call__)(q)
+
+class ConstantLogDensity(LogDensity):
+    @eqx.filter_jit
+    def __call__(self, _: Array) -> Float[Array, ""]:  # noqa: F722
+        return jnp.array(0.0)
 
 class GaussianLogDensity(LogDensity):
 

@@ -1,13 +1,11 @@
 
 import jax.numpy as jnp
 import jax.random as random
-from jaxtyping import Array, Float
-import equinox as eqx
 import seaborn as sns
 from matplotlib import pyplot as plt
 
 from methods.hmc import step_filter
-from methods.potential_energy import LaplaceanPotentialEnergy, GaussianLogDensity, LogDensity
+from methods.potential_energy import LaplaceanPotentialEnergy, GaussianLogDensity, ConstantLogDensity
 from sampler.sampling import Sampler
 from base.data import JaxHMCData
 
@@ -22,10 +20,7 @@ sampler = Sampler()
 # Define the prior (Gaussian with mean 0 and variance 1)
 prior = GaussianLogDensity(mean=jnp.array([0.]), var=jnp.array([1.]))
 
-class ConstantLogDensity(LogDensity):
-    @eqx.filter_jit
-    def __call__(self, _: Array) -> Float[Array, ""]:  # noqa: F722
-        return jnp.array(0.0)
+
 
 likelihood = ConstantLogDensity()
 
