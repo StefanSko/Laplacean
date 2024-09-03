@@ -20,8 +20,6 @@ sampler = Sampler()
 # Define the prior (Gaussian with mean 0 and variance 1)
 prior: GaussianLogDensity = GaussianLogDensity(mean=jnp.array([0.]), var=jnp.array([1.]))
 
-
-
 likelihood: ConstantLogDensity = ConstantLogDensity()
 
 # Create the potential energy
