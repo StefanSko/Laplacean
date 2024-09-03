@@ -3,7 +3,6 @@ import jax
 import jax.numpy as jnp
 from jaxtyping import Array
 
-from methods.hmc import StepFunc
 from methods.potential_energy import LaplaceanPotentialEnergy
 from base.data import JaxHMCData
 

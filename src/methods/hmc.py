@@ -1,6 +1,6 @@
 from typing import Callable
 
-from jax import random, lax, jit
+from jax import random, lax
 import jax.numpy as jnp
 
 import equinox as eqx
