@@ -8,6 +8,7 @@ from base.data import JaxHMCData
 
 import equinox as eqx
 
+#TODO check sampler
 
 class Sampler(eqx.Module):
 
