@@ -110,3 +110,6 @@ def test_step_energy_conservation(mock_potential):
     final_energy = compute_hamiltonian(current_q, jnp.zeros_like(current_q), mock_potential)
     
     assert jnp.abs(final_energy - initial_energy) / initial_energy < 0.05  # Allow for 5% variation
+
+
+#TODO: Add test for integration of individual components in the sampling process.
