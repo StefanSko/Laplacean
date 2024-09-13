@@ -23,11 +23,28 @@ console_handler.setFormatter(formatter)
 logger.addHandler(file_handler)
 logger.addHandler(console_handler)
 
+
 def log_jax_array(array):
     """Convert JAX array to a loggable format."""
-    return array.tolist() if isinstance(array, jnp.ndarray) else array
+    if isinstance(array, jnp.ndarray):
+        return np.array(array)
+    return array
+
 
 def jax_debug_print(msg, **kwargs):
     """Log JAX debug messages."""
-    formatted_kwargs = {k: log_jax_array(v) for k, v in kwargs.items()}
+
+    def format_value(v):
+        if isinstance(v, jnp.ndarray):
+            return f"JAX array with shape {v.shape} and dtype {v.dtype}"
+        return str(v)
+
+    formatted_kwargs = {k: format_value(v) for k, v in kwargs.items()}
     logger.debug(msg.format(**formatted_kwargs))
+
+
+# Custom JAX-friendly print function
+def custom_jax_print(msg, **kwargs):
+    formatted_msg = msg.format(**kwargs)
+    logger.debug(formatted_msg)
+    return None  # Return None to be compatible with JAX transformations
