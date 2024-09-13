@@ -1,9 +1,11 @@
 from typing import Callable, Tuple
-from jax import random, lax
+from jax import random, lax, debug
 import jax.numpy as jnp
 import equinox as eqx
 from jaxtyping import Float, Bool, Array, PRNGKeyArray
 
+from logging_utils import hamiltonians_print, acceptance_print, step_output_print, \
+    after_leapfrog_print, generated_momentum_print, step_input_print
 from methods.potential_energy import LaplaceanPotentialEnergy
 from base.data import JaxHMCData
 
@@ -35,28 +37,39 @@ def metropolis_accept(key: PRNGKeyArray, current_h: Float[Array, ""], proposed_h
     accept = jnp.log(random.uniform(subkey)) < log_accept_prob
     return accept, key
 
+
 def step(U: LaplaceanPotentialEnergy, input: JaxHMCData) -> JaxHMCData:
     q = input.current_q
     key, subkey = random.split(input.key)
     p = random.normal(subkey, q.shape)
-    
+
+    debug.callback(step_input_print, q=q, key=input.key)
+    debug.callback(generated_momentum_print, p=p)
+
     # Perform leapfrog integration
     q_new, p_new = leapfrog_integrate(q, p, input.epsilon, input.L, U)
-    
+
+    debug.callback(after_leapfrog_print, q_new=q_new, p_new=p_new)
+
     # Negate momentum for symmetry
     p_new = -p_new
-    
+
     # Compute Hamiltonians
     current_h = compute_hamiltonian(q, p, U)
     proposed_h = compute_hamiltonian(q_new, p_new, U)
-    
+
+    debug.callback(hamiltonians_print, current=current_h, proposed=proposed_h)
+
     # Metropolis acceptance step
     accept, key = metropolis_accept(key, current_h, proposed_h)
-    
-    # Update position based on acceptance
-    q_new = lax.cond(accept, lambda _: q_new, lambda _: q, operand=None)
-    
-    return JaxHMCData(epsilon=input.epsilon, L=input.L, current_q=q_new, key=key)
 
+    debug.callback(acceptance_print, accept=accept)
+
+    # Update position based on acceptance
+    q_new = jnp.where(accept, q_new, q)
+
+    debug.callback(step_output_print, q_new=q_new, key=key)
+
+    return JaxHMCData(epsilon=input.epsilon, L=input.L, current_q=q_new, key=key)
 # Convert step to an Equinox filter function
 step_filter = eqx.filter_jit(step)

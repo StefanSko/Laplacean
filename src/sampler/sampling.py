@@ -1,6 +1,7 @@
 from typing import Callable
 import jax
 import jax.numpy as jnp
+from jax import debug
 from jaxtyping import Array
 
 from methods.potential_energy import LaplaceanPotentialEnergy
@@ -10,32 +11,44 @@ import equinox as eqx
 
 #TODO check sampler
 
+from logging_utils import logger, sample_step_print, warmup_step_print
+
+
 class Sampler(eqx.Module):
 
-    def __call__(self, step: Callable, init: JaxHMCData, energy: LaplaceanPotentialEnergy, 
+    def __call__(self, step: Callable, init: JaxHMCData, energy: LaplaceanPotentialEnergy,
                  num_warmup: int = 500, num_samples: int = 1000) -> Array:
+        logger.info(f"Starting sampling with num_warmup={num_warmup}, num_samples={num_samples}")
+
         # Warm-up phase
         def warmup():
-            def warmup_body(carry, _):
-                input, key = carry
-                output = step(energy, JaxHMCData(epsilon=input.epsilon, L=input.L, current_q=input.current_q, key=key))
-                return (output, output.key), output.current_q
-    
-            (input, _), _ = jax.lax.scan(warmup_body, (init, init.key), jnp.zeros(num_warmup))
-            return input
-        
+            def warmup_body(carry, i):
+                input = carry
+                output = step(energy, input)
+                debug.callback(warmup_step_print, i=i, q=output.current_q, key=output.key)
+                return output, output.current_q
+
+            final_state, _ = jax.lax.scan(warmup_body, init, jnp.arange(num_warmup))
+            return final_state
+
         input = warmup()
 
         # Sampling phase
         def sampling():
-            def sampling_body(carry, _):
-                input, key = carry
-                output = step(energy, JaxHMCData(epsilon=input.epsilon, L=input.L, current_q=input.current_q, key=key))
-                return (output, output.key), output.current_q
-    
-            (_, key), samples = jax.lax.scan(sampling_body, (input, input.key), jnp.zeros(num_samples))
-            return samples
-        
-        samples = sampling()
+            def sampling_body(carry, i):
+                input = carry
+                output = step(energy, input)
+                debug.callback(sample_step_print, i=i, q=output.current_q, key=output.key)
+                return output, output.current_q
 
+            _, samples = jax.lax.scan(sampling_body, input, jnp.arange(num_samples))
+            return samples
+
+        samples = sampling()
+        logger.debug(f"Final samples shape: {samples.shape}")
+        logger.debug(f"First 5 samples: {samples[:5]}")
+        logger.debug(f"Last 5 samples: {samples[-5:]}")
+
+        logger.info("Sampling completed")
+        
         return samples
