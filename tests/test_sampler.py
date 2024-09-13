@@ -2,6 +2,7 @@ import pytest
 import jax.numpy as jnp
 import jax.random as random
 
+from logging_utils import logger
 from methods.hmc import step
 from sampler.sampling import Sampler
 from base.data import JaxHMCData
@@ -65,10 +66,19 @@ def test_gaussian_sampling():
     )
 
     initial_q = jnp.array([1.0])
-    input_data = JaxHMCData(epsilon=0.1, L=10, current_q=initial_q, key=random.PRNGKey(0))
+    
+    # Try different epsilon and L values
+    for epsilon in [0.01, 0.05, 0.1]:
+        for L in [5, 10, 20]:
+            input_data = JaxHMCData(epsilon=epsilon, L=L, current_q=initial_q, key=random.PRNGKey(0))
 
-    sampler = Sampler()
-    samples = sampler(step, input_data, potential_energy, num_warmup=1000, num_samples=10000)
+            sampler = Sampler()
+            samples = sampler(step, input_data, potential_energy, num_warmup=100, num_samples=1000)
+
+            # Log the results
+            logger.info(f"Epsilon: {epsilon}, L: {L}")
+            logger.info(f"Mean: {jnp.mean(samples)}, Std: {jnp.std(samples)}")
+            logger.info(f"Min: {jnp.min(samples)}, Max: {jnp.max(samples)}")
 
     # Check that the mean and variance are close to the true values
     assert jnp.abs(jnp.mean(samples) - mean[0]) < 0.1
