@@ -9,13 +9,13 @@ from base.data import JaxHMCData
 
 import equinox as eqx
 
-#TODO check sampler
-
 from logging_utils import logger, sample_step_print, warmup_step_print
+from util import conditional_jit
 
 
 class Sampler(eqx.Module):
 
+    @conditional_jit(use_jit=True)
     def __call__(self, step: Callable, init: JaxHMCData, energy: LaplaceanPotentialEnergy,
                  num_warmup: int = 500, num_samples: int = 1000) -> Array:
         logger.info(f"Starting sampling with num_warmup={num_warmup}, num_samples={num_samples}")
