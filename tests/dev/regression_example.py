@@ -24,17 +24,24 @@ y = alpha_true + beta_true * x + epsilon
 class RegressionLogPrior(LogDensity):
     def __call__(self, params: Array) -> float:
         alpha, beta, log_sigma = params
+        # Calculate log prior for alpha (Normal(0, 1))
         log_prior_alpha = -0.5 * alpha**2
+        # Calculate log prior for beta (Normal(0, 1))
         log_prior_beta = -0.5 * beta**2
+        # Calculate log prior for sigma (Exponential(1))
         log_prior_sigma = -jnp.exp(log_sigma)
+        # Return sum of log priors
         return log_prior_alpha + log_prior_beta + log_prior_sigma
 
 # Define the log likelihood
 class RegressionLogLikelihood(LogDensity):
     def __call__(self, params: Array) -> Array:
         alpha, beta, log_sigma = params
+        # Convert log_sigma to sigma
         sigma = jnp.exp(log_sigma)
+        # Calculate predicted y values
         y_pred = alpha + beta * x
+        # Calculate log likelihood (Normal distribution)
         return -0.5 * n * jnp.log(2 * jnp.pi * sigma**2) - 0.5 * jnp.sum((y - y_pred)**2) / sigma**2
 
 # Create the potential energy
@@ -65,13 +72,19 @@ print(f"sigma: {sigma_mean:.2f} +/- {sigma_std:.2f}")
 plt.figure(figsize=(12, 4))
 plt.subplot(131)
 sns.kdeplot(samples[:, 0], label="alpha")
+plt.axvline(alpha_true, color='r', linestyle='--', label='True value')
 plt.xlabel("alpha")
+plt.legend()
 plt.subplot(132)
 sns.kdeplot(samples[:, 1], label="beta")
+plt.axvline(beta_true, color='r', linestyle='--', label='True value')
 plt.xlabel("beta")
+plt.legend()
 plt.subplot(133)
 sns.kdeplot(jnp.exp(samples[:, 2]), label="sigma")
+plt.axvline(sigma_true, color='r', linestyle='--', label='True value')
 plt.xlabel("sigma")
+plt.legend()
 plt.tight_layout()
 plt.show()
 
@@ -96,17 +109,22 @@ plt.show()
 key = random.PRNGKey(2)
 
 # Function to generate predictions for a single sample
-def predict_single_sample(sample, x, key):
-    alpha_sample, beta_sample, log_sigma_sample = sample
-    sigma_sample = jnp.exp(log_sigma_sample)
+# Define a function to generate predictions for a single sample
+def predict_single_sample(params, x, key):
+    alpha, beta, log_sigma = params
+    mu = alpha + beta * x
+    sigma = jnp.exp(log_sigma)
     key, subkey = random.split(key)
-    noise = sigma_sample * random.normal(subkey, shape=(len(x),))
-    return alpha_sample + beta_sample * x + noise
+    return random.normal(subkey, mu.shape) * sigma + mu
 
 # Vectorize the prediction function
-predict_vectorized = jax.vmap(predict_single_sample, in_axes=(0, None, None))
+predict_vectorized = jax.vmap(predict_single_sample, in_axes=(0, None, 0))
 # Generate predictions for all samples
-pred_samples = predict_vectorized(samples, x, key)
+
+# Generate a unique key for each prediction
+keys = random.split(key, len(samples))
+
+pred_samples = predict_vectorized(samples, x, keys)
 
 # Compute the 89% credible interval
 lower_bound = jnp.percentile(pred_samples, 5.5, axis=0)
