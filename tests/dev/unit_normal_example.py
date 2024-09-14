@@ -4,6 +4,7 @@ import jax.random as random
 import seaborn as sns
 from matplotlib import pyplot as plt
 
+from logging_utils import logger
 from methods.hmc import step
 from methods.potential_energy import LaplaceanPotentialEnergy, GaussianLogDensity, ConstantLogDensity
 from sampler.sampling import Sampler
@@ -27,9 +28,11 @@ potential_energy: LaplaceanPotentialEnergy = LaplaceanPotentialEnergy(log_prior=
 
 samples = sampler(step, input, potential_energy)
 
-print(jnp.mean(samples))
-print(jnp.var(samples))
+mean = jnp.mean(samples)
+var = jnp.var(samples)
 
+logger.info(f"mean = {mean}")
+logger.info(f"var = {var}")
 
 sns.kdeplot(samples)
 plt.xlabel('Sample Value')
