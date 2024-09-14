@@ -5,7 +5,6 @@ import jax.numpy as jnp
 import equinox as eqx
 
 import abc
-import functools
 
 from util import conditional_jit
 
