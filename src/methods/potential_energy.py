@@ -23,16 +23,16 @@ class LaplaceanPotentialEnergy(eqx.Module):
         self.log_prior = log_prior
         self.log_likelihood = log_likelihood
 
-    @conditional_jit(use_jit=False)
+    @conditional_jit(use_jit=True)
     def __call__(self, q: Array) -> Float[Array, ""]:
         return -(self.log_prior(q) + self.log_likelihood(q))  # Note the negative sign
 
-    @conditional_jit(use_jit=False)
+    @conditional_jit(use_jit=True)
     def gradient(self, q: Array) -> Array:
         return jax.grad(self.__call__)(q)
 
 class ConstantLogDensity(LogDensity):
-    @conditional_jit(use_jit=False)
+    @conditional_jit(use_jit=True)
     def __call__(self, _: Array) -> Float[Array, ""]:  # noqa: F722
         return jnp.array(0.0)
 
@@ -44,6 +44,6 @@ class GaussianLogDensity(LogDensity):
         self.mean = mean
         self.var = var
 
-    @conditional_jit(use_jit=False)
+    @conditional_jit(use_jit=True)
     def __call__(self, q: Array) -> Float[Array, ""]:
         return jnp.sum(-0.5 * ((q - self.mean) ** 2) / self.var - 0.5 * jnp.log(2 * jnp.pi * self.var))
