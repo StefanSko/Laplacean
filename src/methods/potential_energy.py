@@ -1,8 +1,10 @@
+
 import jax
 import jax.numpy as jnp
 import equinox as eqx
 from jaxtyping import Array, Float
 from typing import Callable, Tuple, Optional
+
 from util import conditional_jit
 
 class LogDensity(eqx.Module):
@@ -11,7 +13,7 @@ class LogDensity(eqx.Module):
     def __init__(self, log_prob: Callable[[Array, Optional[dict]], Float[Array, ""]]):
         self.log_prob = log_prob
         
-    def __call__(self, q: Array, data: Optional[dict]) -> Float[Array, ""]:
+    def __call__(self, q: Array, data: Optional[dict] = None) -> Float[Array, ""]:
         return self.log_prob(q, data)
 
 def normal_log_density(mean: float = 0.0, std: float = 1.0) -> LogDensity:
@@ -46,7 +48,8 @@ class BayesianModel(eqx.Module):
 
     @conditional_jit(use_jit=True)
     def log_joint(self, q: Array) -> Float[Array, ""]:
-        return jax.vmap(lambda d: d.log_prob(q, self.data))(self.log_densities).sum()
+        result = sum(d.log_prob(q, self.data) for d in self.log_densities)
+        return jnp.array(result)
 
     @conditional_jit(use_jit=True)
     def potential_energy(self, q: Array) -> Float[Array, ""]:
