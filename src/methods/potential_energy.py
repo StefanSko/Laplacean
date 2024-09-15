@@ -1,49 +1,61 @@
-
-from jaxtyping import Array, Float
 import jax
 import jax.numpy as jnp
 import equinox as eqx
-
-import abc
-
+from jaxtyping import Array, Float
+from typing import Callable, Tuple, Optional
 from util import conditional_jit
 
-
 class LogDensity(eqx.Module):
-    @abc.abstractmethod
-    def __call__(self, q: Array) -> Float[Array, ""]:  # noqa: F722
-        pass
+    log_prob: Callable[[Array, Optional[dict]], Float[Array, ""]]
 
+    def __init__(self, log_prob: Callable[[Array, Optional[dict]], Float[Array, ""]]):
+        self.log_prob = log_prob
 
-class LaplaceanPotentialEnergy(eqx.Module):
-    log_prior: LogDensity
-    log_likelihood: LogDensity
-    
-    def __init__(self, log_prior: LogDensity, log_likelihood: LogDensity):
-        self.log_prior = log_prior
-        self.log_likelihood = log_likelihood
+def normal_log_density(mean: float = 0.0, std: float = 1.0) -> LogDensity:
+    def log_prob(q: Array, data: Optional[dict] = None) -> Float[Array, ""]:
+        return jnp.sum(-0.5 * ((q - mean) / std) ** 2 - jnp.log(std) - 0.5 * jnp.log(2 * jnp.pi))
+    return LogDensity(log_prob)
+
+def exponential_log_density(rate: float = 1.0) -> LogDensity:
+    def log_prob(q: Array, data: Optional[dict] = None) -> Float[Array, ""]:
+        return jnp.sum(jnp.log(rate) - rate * q)
+    return LogDensity(log_prob)
+
+def parameterized_normal_log_density(
+    mean: Callable[[dict], Array],
+    std: Callable[[dict], Array]
+) -> LogDensity:
+    def log_prob(q: Array, data: Optional[dict] = None) -> Float[Array, ""]:
+        if data is None:
+            return jnp.array(0.0)  # Return 0 log probability as an array when no data is provided
+        mean_value = mean(data)
+        std_value = std(data)
+        return jnp.sum(-0.5 * ((q - mean_value) / std_value) ** 2 - jnp.log(std_value) - 0.5 * jnp.log(2 * jnp.pi))
+    return LogDensity(log_prob)
+
+class BayesianModel(eqx.Module):
+    log_densities: Tuple[LogDensity, ...]
+    data: Optional[dict]
+
+    def __init__(self, log_densities: Tuple[LogDensity, ...], data: Optional[dict] = None):
+        self.log_densities = log_densities
+        self.data = data
 
     @conditional_jit(use_jit=True)
-    def __call__(self, q: Array) -> Float[Array, ""]:
-        return -(self.log_prior(q) + self.log_likelihood(q))  # Note the negative sign
+    def log_joint(self, q: Array) -> Float[Array, ""]:
+        return jax.vmap(lambda d: d.log_prob(q, self.data))(self.log_densities).sum()
+
+    @conditional_jit(use_jit=True)
+    def potential_energy(self, q: Array) -> Float[Array, ""]:
+        return -self.log_joint(q)
 
     @conditional_jit(use_jit=True)
     def gradient(self, q: Array) -> Array:
-        return jax.grad(self.__call__)(q)
+        return jax.grad(self.potential_energy)(q)
 
-class ConstantLogDensity(LogDensity):
-    @conditional_jit(use_jit=True)
-    def __call__(self, _: Array) -> Float[Array, ""]:  # noqa: F722
-        return jnp.array(0.0)
+def bind_data(model: BayesianModel, data: dict) -> BayesianModel:
+    return BayesianModel(model.log_densities, data)
 
-class GaussianLogDensity(LogDensity):
-    mean: Array
-    var: Array
-
-    def __init__(self, mean: Array, var: Array):
-        self.mean = mean
-        self.var = var
-
-    @conditional_jit(use_jit=True)
-    def __call__(self, q: Array) -> Float[Array, ""]:
-        return jnp.sum(-0.5 * ((q - self.mean) ** 2) / self.var - 0.5 * jnp.log(2 * jnp.pi * self.var))
+def sample_prior(model: BayesianModel, key, shape):
+    # This is a placeholder. Actual implementation would depend on the specific priors.
+    pass
