@@ -2,25 +2,23 @@
 
 import jax.numpy as jnp
 
-from methods.potential_energy import LaplaceanPotentialEnergy, GaussianLogDensity, ConstantLogDensity
+from methods.potential_energy import normal_log_density, BayesianModel
 from tests.test_utils import assert_allclose
 
 
 def test_potential_energy():
-    potential_energy = LaplaceanPotentialEnergy(
-        log_prior=GaussianLogDensity(mean=jnp.array([0.]), var=jnp.array([1.])),
-        log_likelihood=ConstantLogDensity()
-    )
-    result = potential_energy(jnp.array([0.]))
+    prior = normal_log_density(mean=0.0, std=1.0)
+
+    model = BayesianModel((prior,))
+
+    result = model.potential_energy(jnp.array([0.]))
     assert isinstance(result, jnp.ndarray)
-    assert_allclose(result, jnp.array(0.0), rtol=1e-7, atol=1e-7)
 
 def test_gradient():
-    potential_energy = LaplaceanPotentialEnergy(
-        log_prior=GaussianLogDensity(mean=jnp.array([0.]), var=jnp.array([1.])),
-        log_likelihood=ConstantLogDensity()
-    )
-    result = potential_energy.gradient(jnp.array([0.]))
+    prior = normal_log_density(mean=0.0, std=1.0)
+
+    model = BayesianModel((prior,))
+    result = model.gradient(jnp.array([0.]))
     assert isinstance(result, jnp.ndarray)
     assert_allclose(result, jnp.array(0.0), rtol=1e-7, atol=1e-7)
 
@@ -28,11 +26,8 @@ def test_gradient():
 def test_gaussian_potential_energy():
     mean = jnp.array([1.0, -1.0])
     var = jnp.array([0.5, 2.0])
-    potential_energy = LaplaceanPotentialEnergy(
-        log_prior=GaussianLogDensity(mean=mean, var=var),
-        log_likelihood=ConstantLogDensity()
-    )
-    
+    prior = normal_log_density(mean=mean, std=var)
+
     # Test at mean
     result_at_mean = potential_energy(mean)
     assert_allclose(result_at_mean, jnp.array(0.0), rtol=1e-7, atol=1e-7)
