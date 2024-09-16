@@ -18,7 +18,8 @@ class LogDensity(eqx.Module):
 
 def normal_log_density(mean: Array, std: Array) -> LogDensity:
     def log_prob(q: Array, data: Optional[dict] = None) -> Float[Array, ""]:
-        return jnp.sum(-0.5 * ((q - mean) / std) ** 2 - jnp.log(std) - 0.5 * jnp.log(2 * jnp.pi))
+        result = jnp.sum(-0.5 * ((q - mean) / std) ** 2 - jnp.log(std) - 0.5 * jnp.log(2 * jnp.pi))
+        return result
     return LogDensity(log_prob)
 
 def exponential_log_density(rate: float = 1.0) -> LogDensity:
@@ -55,7 +56,6 @@ class BayesianModel(eqx.Module):
     def potential_energy(self, q: Array) -> Float[Array, ""]:
         return -self.log_joint(q)
 
-    #TODO: check gradient
     @conditional_jit(use_jit=True)
     def gradient(self, q: Array) -> Array:
         return jax.grad(self.potential_energy)(q)
