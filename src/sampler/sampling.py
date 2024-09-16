@@ -4,7 +4,7 @@ import jax.numpy as jnp
 from jax import debug
 from jaxtyping import Array
 
-from methods.potential_energy import LaplaceanPotentialEnergy
+from methods.potential_energy import BayesianModel
 from base.data import JaxHMCData
 
 import equinox as eqx
@@ -16,7 +16,7 @@ from util import conditional_jit
 class Sampler(eqx.Module):
 
     @conditional_jit(use_jit=True)
-    def __call__(self, step: Callable, init: JaxHMCData, energy: LaplaceanPotentialEnergy,
+    def __call__(self, step: Callable, init: JaxHMCData, energy: BayesianModel,
                  num_warmup: int = 500, num_samples: int = 1000) -> Array:
         logger.info(f"Starting sampling with num_warmup={num_warmup}, num_samples={num_samples}")
 
