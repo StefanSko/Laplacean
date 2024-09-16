@@ -6,28 +6,28 @@ from jaxtyping import Float, Bool, Array, PRNGKeyArray
 
 from logging_utils import hamiltonians_print, acceptance_print, step_output_print, \
     after_leapfrog_print, generated_momentum_print, step_input_print
-from methods.potential_energy import LaplaceanPotentialEnergy
+from methods.potential_energy import BayesianModel
 from base.data import JaxHMCData
 
-StepFunc = Callable[[LaplaceanPotentialEnergy, JaxHMCData], JaxHMCData]
+StepFunc = Callable[[BayesianModel, JaxHMCData], JaxHMCData]
 
-def leapfrog_step(q: jnp.ndarray, p: jnp.ndarray, epsilon: float, U: LaplaceanPotentialEnergy) -> Tuple[jnp.ndarray, jnp.ndarray]:
+def leapfrog_step(q: jnp.ndarray, p: jnp.ndarray, epsilon: float, U: BayesianModel) -> Tuple[jnp.ndarray, jnp.ndarray]:
     """Perform a single leapfrog step."""
     p = p - epsilon * U.gradient(q) / 2  # Half step for momentum
     q = q + epsilon * p  # Full step for position
     p = p - epsilon * U.gradient(q) / 2  # Half step for momentum
     return q, p
 
-def leapfrog_integrate(q: jnp.ndarray, p: jnp.ndarray, epsilon: float, L: int, U: LaplaceanPotentialEnergy) -> Tuple[jnp.ndarray, jnp.ndarray]:
+def leapfrog_integrate(q: jnp.ndarray, p: jnp.ndarray, epsilon: float, L: int, U: BayesianModel) -> Tuple[jnp.ndarray, jnp.ndarray]:
     """Perform L steps of leapfrog integration."""
     def body_fun(i, carry):
         q, p = carry
         return leapfrog_step(q, p, epsilon, U)
     return lax.fori_loop(0, L, body_fun, (q, p))
 
-def compute_hamiltonian(q: jnp.ndarray, p: jnp.ndarray, U: LaplaceanPotentialEnergy) -> Float[Array, ""]:
+def compute_hamiltonian(q: jnp.ndarray, p: jnp.ndarray, U: BayesianModel) -> Float[Array, ""]:
     """Compute the Hamiltonian (total energy) of the system."""
-    return U(q) + jnp.sum(p ** 2) / 2
+    return U.potential_energy(q) + jnp.sum(p ** 2) / 2
 
 def metropolis_accept(key: PRNGKeyArray, current_h: Float[Array, ""], proposed_h: Float[Array, ""]) -> Tuple[Bool[Array, ""], PRNGKeyArray]:
     """Perform Metropolis acceptance step."""
@@ -38,7 +38,7 @@ def metropolis_accept(key: PRNGKeyArray, current_h: Float[Array, ""], proposed_h
     return accept, key
 
 
-def step(U: LaplaceanPotentialEnergy, input: JaxHMCData) -> JaxHMCData:
+def step(U: BayesianModel, input: JaxHMCData) -> JaxHMCData:
     q = input.current_q
     key, subkey = random.split(input.key)
     p = random.normal(subkey, q.shape)
