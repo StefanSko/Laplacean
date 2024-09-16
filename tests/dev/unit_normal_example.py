@@ -6,27 +6,22 @@ from matplotlib import pyplot as plt
 
 from logging_utils import logger
 from methods.hmc import step
-from methods.potential_energy import LaplaceanPotentialEnergy, GaussianLogDensity, ConstantLogDensity
+from methods.potential_energy import BayesianModel, normal_log_density
 from sampler.sampling import Sampler
 from base.data import JaxHMCData
 
-
-U = GaussianLogDensity(mean=jnp.array([0.]), var=jnp.array([1.]))
 
 initial_q = jnp.array([1.])
 
 input: JaxHMCData = JaxHMCData(epsilon=0.1, L=10, current_q=initial_q, key=random.PRNGKey(0))
 sampler = Sampler()
 
+normal = normal_log_density(mean=jnp.array(0.0), std=jnp.array(1.0))
+
 # Define the prior (Gaussian with mean 0 and variance 1)
-prior: GaussianLogDensity = GaussianLogDensity(mean=jnp.array([0.]), var=jnp.array([1.]))
+model = BayesianModel((normal,))
 
-likelihood: ConstantLogDensity = ConstantLogDensity()
-
-# Create the potential energy
-potential_energy: LaplaceanPotentialEnergy = LaplaceanPotentialEnergy(log_prior=prior, log_likelihood=likelihood)
-
-samples = sampler(step, input, potential_energy)
+samples = sampler(step, input, model)
 
 mean = jnp.mean(samples)
 var = jnp.var(samples)
