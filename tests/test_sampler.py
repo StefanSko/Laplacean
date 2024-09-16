@@ -3,12 +3,12 @@ import jax.numpy as jnp
 import jax.random as random
 
 from methods.hmc import step
+from methods.potential_energy import BayesianModel, normal_log_density, constant_log_density
 from sampler.sampling import Sampler
 from base.data import JaxHMCData
-from methods.potential_energy import LaplaceanPotentialEnergy, ConstantLogDensity, GaussianLogDensity
 
 
-def mock_step(energy: LaplaceanPotentialEnergy, data: JaxHMCData) -> JaxHMCData:
+def mock_step(model: BayesianModel, data: JaxHMCData) -> JaxHMCData:
     # Simple mock step function that just adds 1 to current_q
     new_q = data.current_q + 1
     new_key = random.split(data.key)[0]
@@ -20,10 +20,7 @@ def sampler():
 
 @pytest.fixture
 def energy():
-    return LaplaceanPotentialEnergy(
-        log_prior=ConstantLogDensity(),
-        log_likelihood=ConstantLogDensity()
-    )
+    return BayesianModel((constant_log_density(),))
 
 @pytest.fixture
 def init_data():
@@ -57,12 +54,12 @@ def test_sampler_multidimensional(sampler, energy):
 
 def test_gaussian_sampling():
     # Set up a simple Gaussian distribution
-    mean = jnp.array([0.0])
-    var = jnp.array([1.0])
-    potential_energy = LaplaceanPotentialEnergy(
-        log_prior=GaussianLogDensity(mean=mean, var=var),
-        log_likelihood=ConstantLogDensity()
-    )
+    
+    mean = 0.0
+    var = 1.0
+    
+    prior = normal_log_density(mean=jnp.array(mean), std=jnp.array(var))
+    model = BayesianModel((prior,))
 
     initial_q = jnp.array([0.0])
     
@@ -72,8 +69,8 @@ def test_gaussian_sampling():
     input_data = JaxHMCData(epsilon=epsilon, L=L, current_q=initial_q, key=random.PRNGKey(0))
 
     sampler = Sampler()
-    samples = sampler(step, input_data, potential_energy, num_warmup=100, num_samples=1000)
+    samples = sampler(step, input_data, model, num_warmup=100, num_samples=1000)
 
     # Check that the mean and variance are close to the true values
-    assert jnp.abs(jnp.mean(samples) - mean[0]) < 0.3
-    assert jnp.abs(jnp.var(samples) - var[0]) < 0.3
+    assert jnp.abs(jnp.mean(samples) - mean) < 0.3
+    assert jnp.abs(jnp.var(samples) - var) < 0.3
