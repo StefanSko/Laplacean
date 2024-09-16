@@ -7,7 +7,7 @@ from tests.test_utils import assert_allclose
 
 
 def test_potential_energy():
-    prior = normal_log_density(mean=jnp.array(0.0), std=jnp.array(0.0))
+    prior = normal_log_density(mean=jnp.array(0.0), std=jnp.array(1.0))
 
     model = BayesianModel((prior,))
 
@@ -15,7 +15,7 @@ def test_potential_energy():
     assert isinstance(result, jnp.ndarray)
 
 def test_gradient():
-    prior = normal_log_density(mean=jnp.array(0.0), std=jnp.array(0.0))
+    prior = normal_log_density(mean=jnp.array(0.0), std=jnp.array(1.0))
 
     model = BayesianModel((prior,))
     result = model.gradient(jnp.array([0.]))
