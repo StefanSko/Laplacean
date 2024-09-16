@@ -59,16 +59,16 @@ def test_gaussian_gradient():
     gradient = model.gradient(q)
     
     # Directional checks
-    assert gradient[0] > 0, "Gradient should be positive in first dimension (pointing towards mean)"
-    assert gradient[1] < 0, "Gradient should be negative in second dimension (pointing towards mean)"
+    assert gradient[0] < 0, "Gradient should be negative in first dimension (pointing away from mean)"
+    assert gradient[1] > 0, "Gradient should be positive in second dimension (pointing away from mean)"
     
     # Check that gradient magnitude increases as we move further from mean
     q_further = jnp.array([-1.0, 2.0])
     gradient_further = model.gradient(q_further)
     assert jnp.linalg.norm(gradient_further) > jnp.linalg.norm(gradient), "Gradient magnitude should increase as we move further from mean"
     
-    # Check that gradient points towards the mean
-    assert jnp.dot(gradient, mean - q) > 0, "Gradient should point towards the mean"
+    # Check that gradient points away from the mean
+    assert jnp.dot(gradient, mean - q) < 0, "Gradient should point towards the mean"
 
 
 
