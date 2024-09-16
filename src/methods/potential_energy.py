@@ -27,7 +27,7 @@ def normal_log_density(mean: Array, std: Array) -> LogDensity:
 
     return LogDensity(log_prob)
 
-def exponential_log_density(rate: float = 1.0) -> LogDensity:
+def exponential_log_density(rate: Array = jnp.array(1.0)) -> LogDensity:
     def log_prob(q: Array, data: Optional[dict] = None) -> Float[Array, ""]:
         return jnp.sum(jnp.log(rate) - rate * q)
     return LogDensity(log_prob)
