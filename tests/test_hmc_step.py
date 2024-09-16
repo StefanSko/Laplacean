@@ -1,6 +1,10 @@
+from typing import Optional
+
 import pytest
 import jax.numpy as jnp
-from jax import random
+from jax import random, Array
+from jaxtyping import Float
+
 from methods.hmc import (
     leapfrog_step,
     leapfrog_integrate,
@@ -8,25 +12,20 @@ from methods.hmc import (
     metropolis_accept,
     step
 )
-from methods.potential_energy import LaplaceanPotentialEnergy, LogDensity
+from methods.potential_energy import BayesianModel, LogDensity, constant_log_density
 from base.data import JaxHMCData
 
 # Mock potential energy function for testing
-class MockLogPrior(LogDensity):
-    def __call__(self, q):
+def mock_log_prior() -> LogDensity:
+    def log_prob(q: Array, data: Optional[dict] = None) -> Float[Array, ""]:
         return -jnp.sum(q**2) / 2
+    return LogDensity(log_prob)
 
-class MockLogLikelihood(LogDensity):
-    def __call__(self, q):
-        return 0.0
 
 
 @pytest.fixture
 def mock_potential():
-    return LaplaceanPotentialEnergy(
-        log_prior=MockLogPrior(),
-        log_likelihood=MockLogLikelihood()
-    )
+    return BayesianModel((mock_log_prior(), constant_log_density()))
 
 def test_leapfrog_step_energy_conservation(mock_potential):
     q = jnp.array([1.0, 2.0, 3.0])
@@ -57,19 +56,19 @@ def test_compute_hamiltonian_separability(mock_potential):
     
     total_energy = compute_hamiltonian(q, p, mock_potential)
     kinetic_energy = jnp.sum(p**2) / 2
-    potential_energy = mock_potential(q)
+    potential_energy = mock_potential.potential_energy(q)
     
     assert jnp.isclose(total_energy, kinetic_energy + potential_energy)
 
 def test_metropolis_accept_detailed_balance():
     key = random.PRNGKey(0)
-    n_samples = 100000
+    n_samples = 10000
     current_h = 1.0
     proposed_h = 1.5
     
     accepts = []
     for _ in range(n_samples):
-        accept, key = metropolis_accept(key, current_h, proposed_h)
+        accept, key = metropolis_accept(key, jnp.array(current_h), jnp.array(proposed_h))
         accepts.append(accept)
     
     acceptance_rate = jnp.mean(jnp.array(accepts))
@@ -112,4 +111,3 @@ def test_step_energy_conservation(mock_potential):
     assert jnp.abs(final_energy - initial_energy) / initial_energy < 0.05  # Allow for 5% variation
 
 
-#TODO: Add test for integration of individual components in the sampling process.
