@@ -16,10 +16,11 @@ class LogDensity(eqx.Module):
     def __call__(self, q: Array, data: Optional[dict] = None) -> Float[Array, ""]:
         return self.log_prob(q, data)
 
+
 def normal_log_density(mean: Array, std: Array) -> LogDensity:
     def log_prob(q: Array, data: Optional[dict] = None) -> Float[Array, ""]:
-        result = jnp.sum(-0.5 * ((q - mean) / std) ** 2 - jnp.log(std) - 0.5 * jnp.log(2 * jnp.pi))
-        return result
+        return jnp.sum(-0.5 * ((q - mean) / std) ** 2)
+
     return LogDensity(log_prob)
 
 def exponential_log_density(rate: float = 1.0) -> LogDensity:

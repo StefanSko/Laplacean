@@ -25,39 +25,38 @@ def test_gradient():
 
 def test_gaussian_potential_energy():
     mean = jnp.array([1.0, -1.0])
-    var = jnp.array([0.5, 2.0])
-    prior = normal_log_density(mean=mean, std=var)
+    std = jnp.array([0.5, 2.0])
+    prior = normal_log_density(mean=mean, std=std)
+
+    model = BayesianModel((prior,))
 
     # Test at mean
-    result_at_mean = potential_energy(mean)
-    assert_allclose(result_at_mean, jnp.array(0.0), rtol=1e-7, atol=1e-7)
+    result_at_mean = model.potential_energy(mean)
+    assert_allclose(result_at_mean, 0.0, rtol=1e-7, atol=1e-7)
     
     # Test away from mean
     q = jnp.array([0.0, 0.0])
-    result = potential_energy(q)
-    # Directional checks
-    assert result < 0, "Potential energy should be negative away from mean"
+    result = model.potential_energy(q)
+    assert result > 0, "Potential energy should be positive away from mean"
     
-    # Check that moving further from mean increases potential energy
+    # Further away from mean
     q_further = jnp.array([-1.0, 2.0])
-    result_further = potential_energy(q_further)
-    assert result_further < result, "Potential energy should decrease as we move further from mean"
+    result_further = model.potential_energy(q_further)
+    assert result_further > result, "Potential energy should increase as we move further from mean"
 
 def test_gaussian_gradient():
     mean = jnp.array([1.0, -1.0])
-    var = jnp.array([0.5, 2.0])
-    potential_energy = LaplaceanPotentialEnergy(
-        log_prior=GaussianLogDensity(mean=mean, var=var),
-        log_likelihood=ConstantLogDensity()
-    )
+    std = jnp.array([0.5, 2.0])
+    prior = normal_log_density(mean=mean, std=std)
+    model = BayesianModel((prior,))
     
     # Test at mean
-    gradient_at_mean = potential_energy.gradient(mean)
+    gradient_at_mean = model.gradient(mean)
     assert_allclose(gradient_at_mean, jnp.zeros_like(mean), rtol=1e-7, atol=1e-7)
     
     # Test away from mean
     q = jnp.array([0.0, 0.0])
-    gradient = potential_energy.gradient(q)
+    gradient = model.gradient(q)
     
     # Directional checks
     assert gradient[0] > 0, "Gradient should be positive in first dimension (pointing towards mean)"
@@ -65,7 +64,7 @@ def test_gaussian_gradient():
     
     # Check that gradient magnitude increases as we move further from mean
     q_further = jnp.array([-1.0, 2.0])
-    gradient_further = potential_energy.gradient(q_further)
+    gradient_further = model.gradient(q_further)
     assert jnp.linalg.norm(gradient_further) > jnp.linalg.norm(gradient), "Gradient magnitude should increase as we move further from mean"
     
     # Check that gradient points towards the mean
