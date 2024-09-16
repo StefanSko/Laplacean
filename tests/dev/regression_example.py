@@ -6,9 +6,12 @@ import seaborn as sns
 from matplotlib import pyplot as plt
 
 from methods.hmc import step
-from methods.potential_energy import LaplaceanPotentialEnergy, LogDensity
+from methods.potential_energy import BayesianModel, exponential_log_density, normal_log_density, \
+    parameterized_normal_log_density, bind_data
 from sampler.sampling import Sampler
 from base.data import JaxHMCData
+
+#TODO: FIX Sampling for regression
 
 # Generate some observed data
 n = 300
@@ -20,34 +23,27 @@ key = random.PRNGKey(0)
 epsilon = sigma_true * random.normal(key, (n,))
 y = alpha_true + beta_true * x + epsilon
 
-# Define the log prior
-class RegressionLogPrior(LogDensity):
-    def __call__(self, params: Array) -> float:
-        alpha, beta, log_sigma = params
-        # Calculate log prior for alpha (Normal(0, 1))
-        log_prior_alpha = -0.5 * alpha**2
-        # Calculate log prior for beta (Normal(0, 1))
-        log_prior_beta = -0.5 * beta**2
-        # Calculate log prior for sigma (Exponential(1))
-        log_prior_sigma = -jnp.exp(log_sigma)
-        # Return sum of log priors
-        return log_prior_alpha + log_prior_beta + log_prior_sigma
 
-# Define the log likelihood
-class RegressionLogLikelihood(LogDensity):
-    def __call__(self, params: Array) -> Array:
-        alpha, beta, log_sigma = params
-        # Convert log_sigma to sigma
-        sigma = jnp.exp(log_sigma)
-        # Calculate predicted y values
-        y_pred = alpha + beta * x
-        # Calculate log likelihood (Normal distribution)
-        return -0.5 * n * jnp.log(2 * jnp.pi * sigma**2) - 0.5 * jnp.sum((y - y_pred)**2) / sigma**2
+# Define the model components
+prior_alpha = normal_log_density(mean=jnp.array(0.0), std=jnp.array(1.0))
+prior_beta = normal_log_density(mean=jnp.array(0.0), std=jnp.array(1.0))
+prior_sigma = exponential_log_density()
 
-# Create the potential energy
-log_prior = RegressionLogPrior()
-log_likelihood = RegressionLogLikelihood()
-potential_energy = LaplaceanPotentialEnergy(log_prior=log_prior, log_likelihood=log_likelihood)
+def mean_function(params: Array, x: Array) -> Array:
+    alpha, beta, _ = params
+    return alpha + beta * x
+
+likelihood = parameterized_normal_log_density(
+    mean=lambda data: mean_function(data['params'], data['x']),
+    std=lambda data: jnp.exp(data['params'][2])
+)
+
+# Create the initial Bayesian model (without data)
+model = BayesianModel((prior_alpha, prior_beta, prior_sigma, likelihood))
+
+# Bind the data to the model
+data = {'x': x, 'y': y}
+bound_model = bind_data(model, data)
 
 # Initialize the HMC sampler
 initial_params = jnp.array([0.0, 0.0, jnp.log(0.5)])
@@ -55,7 +51,7 @@ input_data = JaxHMCData(epsilon=0.01, L=12, current_q=initial_params, key=random
 
 # Create and run the sampler
 sampler = Sampler()
-samples = sampler(step, input_data, potential_energy, num_warmup=500, num_samples=4000)
+samples = sampler(step, input_data, model, num_warmup=500, num_samples=4000)
 
 # Compute the mean and standard deviation of the posterior distribution
 alpha_mean, beta_mean, log_sigma_mean = jnp.mean(samples, axis=0)
