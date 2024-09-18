@@ -47,11 +47,11 @@ bound_model = bind_data(model, data)
 
 # Initialize the HMC sampler
 initial_params = jnp.array([0.0, 0.0, jnp.log(0.5)])
-input_data = JaxHMCData(epsilon=0.01, L=12, current_q=initial_params, key=random.PRNGKey(1))
+input_data = JaxHMCData(epsilon=0.005, L=12, current_q=initial_params, key=random.PRNGKey(1))
 
 # Create and run the sampler
 sampler = Sampler()
-samples = sampler(step, input_data, model, num_warmup=500, num_samples=4000)
+samples = sampler(step, input_data, model, num_warmup=1000, num_samples=4000)
 
 # Compute the mean and standard deviation of the posterior distribution
 alpha_mean, beta_mean, log_sigma_mean = jnp.mean(samples, axis=0)
@@ -135,4 +135,23 @@ plt.xlabel('x')
 plt.ylabel('y')
 plt.legend()
 plt.title('Posterior Predictive Distribution')
+plt.show()
+
+# Add diagnostic plots
+plt.figure(figsize=(15, 5))
+for i, (param, true_value) in enumerate(zip(['alpha', 'beta', 'log_sigma'], [alpha_true, beta_true, jnp.log(sigma_true)])):
+    plt.subplot(1, 3, i+1)
+    plt.plot(samples[:, i])
+    plt.axhline(true_value, color='r', linestyle='--')
+    plt.title(f'{param} trace plot')
+plt.tight_layout()
+plt.show()
+
+# Plot autocorrelation
+plt.figure(figsize=(15, 5))
+for i, param in enumerate(['alpha', 'beta', 'log_sigma']):
+    plt.subplot(1, 3, i+1)
+    plt.acorr(samples[:, i] - jnp.mean(samples[:, i]), maxlags=100)
+    plt.title(f'{param} autocorrelation')
+plt.tight_layout()
 plt.show()
