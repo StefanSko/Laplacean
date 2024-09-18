@@ -71,6 +71,20 @@ def test_gaussian_gradient():
     assert jnp.dot(gradient, mean - q) < 0, "Gradient should point towards the mean"
 
 
+def test_gradient_accuracy():
+    # Define the model
+    model = BayesianModel((normal_log_density(mean=jnp.array(0.0), std=jnp.array(1.0)),))
+
+    # Sample a point
+    q = jnp.array([1.0, 2.0, 3.0])
+
+    # Compute gradients
+    grad_U = model.gradient(q)
+
+    # Expected gradient for U = 0.5 * sum(q^2) is grad_U = q
+    expected_grad_U = q
+
+    assert jnp.allclose(grad_U, expected_grad_U, atol=1e-5), f"Gradients do not match: {grad_U} vs {expected_grad_U}"
 
 def test_custom_log_likelihood():
     class CustomLogLikelihood(ConstantLogDensity):
