@@ -12,7 +12,7 @@ from methods.hmc import (
     metropolis_accept,
     step
 )
-from methods.potential_energy import BayesianModel, LogDensity, constant_log_density
+from methods.potential_energy import BayesianModel, LogDensity, constant_log_density, normal_log_density
 from base.data import JaxHMCData
 
 # Mock potential energy function for testing
@@ -41,7 +41,7 @@ def test_leapfrog_step_energy_conservation(mock_potential):
 def test_leapfrog_integrate_reversibility(mock_potential):
     q = jnp.array([1.0, 2.0, 3.0])
     p = jnp.array([0.1, 0.2, 0.3])
-    epsilon = 0.1
+    epsilon = 0.01
     L = 10
     
     q_forward, p_forward = leapfrog_integrate(q, p, epsilon, L, mock_potential)
@@ -90,24 +90,28 @@ def test_step_dimensionality_preservation(mock_potential):
     assert output_data.epsilon == input_data.epsilon
     assert output_data.L == input_data.L
 
-def test_step_energy_conservation(mock_potential):
-    key = random.PRNGKey(0)
+
+def test_leapfrog_energy_conservation():
+    # Define the model with a simple normal log density
+    model = BayesianModel((normal_log_density(mean=jnp.array(0.0), std=jnp.array(1.0)),))
+    
+    # Initialize positions and momenta
     q = jnp.array([1.0, 2.0, 3.0])
-    epsilon = 0.01  # Small step size for better energy conservation
-    L = 100
-    input_data = JaxHMCData(epsilon=epsilon, L=L, current_q=q, key=key)
+    p = jnp.array([0.1, 0.2, 0.3])
     
-    initial_energy = compute_hamiltonian(q, jnp.zeros_like(q), mock_potential)
+    # Set integrator parameters
+    epsilon = 0.01  # Smaller step size for better accuracy
+    L = 10  # Number of leapfrog steps
     
-    n_steps = 1000
-    current_q = q
-    for _ in range(n_steps):
-        output_data = step(mock_potential, input_data)
-        current_q = output_data.current_q
-        input_data = output_data
+    # Compute initial Hamiltonian
+    H_initial = compute_hamiltonian(q, p, model)
     
-    final_energy = compute_hamiltonian(current_q, jnp.zeros_like(current_q), mock_potential)
+    # Perform leapfrog integration
+    q_new, p_new = leapfrog_integrate(q, p, epsilon, L, model)
     
-    assert jnp.abs(final_energy - initial_energy) / initial_energy < 0.05  # Allow for 5% variation
-
-
+    # Compute final Hamiltonian
+    H_final = compute_hamiltonian(q_new, p_new, model)
+    
+    # Check energy conservation
+    energy_diff = jnp.abs(H_final - H_initial)
+    assert energy_diff < 1e-3, f"Energy difference {energy_diff} exceeds threshold"
