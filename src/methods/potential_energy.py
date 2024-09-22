@@ -39,9 +39,9 @@ def parameterized_normal_log_density(
     def log_prob(q: Array, data: Optional[dict] = None) -> Float[Array, ""]:
         if data is None:
             return jnp.array(0.0)  # Return 0 log probability as an array when no data is provided
-        mean_value = mean(q, data)
+        y_pred = mean(q, data)
         std_value = std(q, data)
-        return jnp.sum(-0.5 * ((q - mean_value) / std_value) ** 2 - jnp.log(std_value) - 0.5 * jnp.log(2 * jnp.pi))
+        return jnp.sum(-0.5 * ((data['y'] - y_pred) / std_value) ** 2 - jnp.log(std_value) - 0.5 * jnp.log(2 * jnp.pi))
     return LogDensity(log_prob)
 
 class BayesianModel(eqx.Module):
