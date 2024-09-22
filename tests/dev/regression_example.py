@@ -34,8 +34,8 @@ def mean_function(params: Array, x: Array) -> Array:
     return alpha + beta * x
 
 likelihood = parameterized_normal_log_density(
-    mean=lambda data: mean_function(data['params'], data['x']),
-    std=lambda data: jnp.exp(data['params'][2])
+    mean=lambda params, data: mean_function(params, data['x']),
+    std=lambda params, data: jnp.exp(params[2])
 )
 
 # Create the initial Bayesian model (without data)
@@ -51,7 +51,7 @@ input_data = JaxHMCData(epsilon=0.005, L=12, current_q=initial_params, key=rando
 
 # Create and run the sampler
 sampler = Sampler()
-samples = sampler(step, input_data, model, num_warmup=1000, num_samples=4000)
+samples = sampler(step, input_data, bound_model, num_warmup=1000, num_samples=4000)
 
 # Compute the mean and standard deviation of the posterior distribution
 alpha_mean, beta_mean, log_sigma_mean = jnp.mean(samples, axis=0)
