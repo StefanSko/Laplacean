@@ -11,8 +11,6 @@ from methods.potential_energy import BayesianModel, exponential_log_density, nor
 from sampler.sampling import Sampler
 from base.data import JaxHMCData
 
-#TODO: FIX Sampling for regression
-
 # Generate some observed data
 n = 300
 x = jnp.linspace(0, 1, n)
