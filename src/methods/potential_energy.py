@@ -33,14 +33,14 @@ def exponential_log_density(rate: Array = jnp.array(1.0)) -> LogDensity:
     return LogDensity(log_prob)
 
 def parameterized_normal_log_density(
-    mean: Callable[[dict], Array],
-    std: Callable[[dict], Array]
+    mean: Callable[[Array, dict], Array],
+    std: Callable[[Array, dict], Array]
 ) -> LogDensity:
     def log_prob(q: Array, data: Optional[dict] = None) -> Float[Array, ""]:
         if data is None:
             return jnp.array(0.0)  # Return 0 log probability as an array when no data is provided
-        mean_value = mean(data)
-        std_value = std(data)
+        mean_value = mean(q, data)
+        std_value = std(q, data)
         return jnp.sum(-0.5 * ((q - mean_value) / std_value) ** 2 - jnp.log(std_value) - 0.5 * jnp.log(2 * jnp.pi))
     return LogDensity(log_prob)
 
