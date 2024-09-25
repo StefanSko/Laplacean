@@ -16,7 +16,13 @@ initial_q = jnp.array([1.])
 input: JaxHMCData = JaxHMCData(epsilon=0.1, L=10, current_q=initial_q, key=random.PRNGKey(0))
 sampler = Sampler()
 
-normal = normal_log_density(mean=jnp.array(0.0), std=jnp.array(1.0))
+
+def mean(x, y):
+    return jnp.array(0.0)
+def std(x, y):
+    return jnp.array(1.0)
+
+normal = normal_log_density(mean, std)
 
 # Define the prior (Gaussian with mean 0 and variance 1)
 model = BayesianModel((normal,))
