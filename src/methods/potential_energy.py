@@ -21,9 +21,11 @@ def constant_log_density() -> LogDensity:
         return jnp.array(0.0)
     return LogDensity(log_prob) 
 
-def normal_log_density(mean: Array, std: Array) -> LogDensity:
+def normal_log_density(
+    mean: Callable[[Array, dict], Array],
+    std: Callable[[Array, dict], Array]) -> LogDensity:
     def log_prob(q: Array, data: Optional[dict] = None) -> Float[Array, ""]:
-        return jnp.sum(-0.5 * ((q - mean) / std) ** 2)
+        return jnp.sum(-0.5 * ((q - mean(q, data)) / std(q, data)) ** 2)
 
     return LogDensity(log_prob)
 
