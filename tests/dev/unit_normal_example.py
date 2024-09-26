@@ -17,12 +17,12 @@ input: JaxHMCData = JaxHMCData(epsilon=0.1, L=10, current_q=initial_q, key=rando
 sampler = Sampler()
 
 
-def mean(x, y):
+def f_mean(x):
     return jnp.array(0.0)
-def std(x, y):
+def f_std(x):
     return jnp.array(1.0)
 
-normal = normal_log_density(mean, std)
+normal = normal_log_density(f_mean, f_std)
 
 # Define the prior (Gaussian with mean 0 and variance 1)
 model = BayesianModel((normal,))

@@ -14,9 +14,9 @@ key = random.PRNGKey(0)
 data = random.normal(key, (100,)) * 2 + 1
 
 # Define the prior (which will act as our model)
-def mean(x, y):
+def mean(x):
     return jnp.array(0.0)
-def std(x, y):
+def std(x):
     return jnp.array(1.0)
 
 normal = parameterized_normal_log_density(mean, std)
