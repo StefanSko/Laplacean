@@ -3,7 +3,7 @@ import jax
 import jax.numpy as jnp
 import equinox as eqx
 from jaxtyping import Array, Float
-from typing import Callable, Tuple
+from typing import Callable, Tuple, NewType
 
 from util import conditional_jit
 
@@ -43,6 +43,60 @@ def parameterized_normal_log_density(
         std_value = std(q)
         return jnp.sum(-0.5 * ((q - y_pred) / std_value) ** 2 - jnp.log(std_value) - 0.5 * jnp.log(2 * jnp.pi))
     return LogDensity(log_prob)
+
+
+
+class ObservableProvider:
+    def __init__(self, data_fn: Callable[[], Array]):
+        self.data_fn = data_fn
+
+    def __call__(self) -> Array:
+        return self.data_fn()
+
+NeutralObservableProvider = NewType('NeutralObservableProvider', ObservableProvider)
+neutral_observable_provider = NeutralObservableProvider(ObservableProvider(lambda: jnp.array(0.0)))
+
+ZeroLogDensity = NewType('ZeroLogDensity', LogDensity)
+zero_log_density = ZeroLogDensity(LogDensity(lambda q: jnp.array(0.0)))
+
+class Likeihood(LogDensity):
+    def __init__(self, log_density: LogDensity, observable_provider: ObservableProvider):
+        self.log_density = log_density
+        self.observable_provider = observable_provider
+        super().__init__(self.log_prob)
+    
+    def log_prob(self, q: Array) -> Float[Array, ""]:
+        match self.log_density:
+            case ZeroLogDensity():
+                return jnp.array(0.0)
+            case _:
+                return self.log_density.log_prob(q)
+
+
+class LikelihoodBuilder
+
+
+class NormalLogDensity(LogDensity):
+
+    mean: Callable[[Array], Array]
+    std: Callable[[Array], Array]
+    observable_provider: ObservableProvider
+
+    def __init__(self, mean: Callable[[Array], Array], std: Callable[[Array], Array], observable_provider: ObservableProvider):
+        self.mean = mean
+        self.std = std  
+        self.observable_provider = observable_provider
+        super().__init__(self.log_prob)
+    
+    @classmethod
+    def normal_likelihood(cls, mean: Callable[[Array], Array], std: Callable[[Array], Array]) -> 'NormalLogDensity':
+        instance = cls(mean, std, neutral_observable_provider)
+        return instance
+
+    def log_prob(self, q: Array) -> Float[Array, ""]:
+        y_pred = self.mean(q)
+        std_value = self.std(q)
+        return jnp.sum(-0.5 * ((q - y_pred) / std_value) ** 2 - jnp.log(std_value) - 0.5 * jnp.log(2 * jnp.pi)) 
 
 class BayesianModel(eqx.Module):
     log_densities: Tuple[LogDensity, ...]
