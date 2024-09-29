@@ -1,102 +1,100 @@
-
+from abc import ABC, abstractmethod
 import jax
 import jax.numpy as jnp
 import equinox as eqx
 from jaxtyping import Array, Float
-from typing import Callable, Tuple, NewType
+from typing import Callable, Generic, NewType, Tuple, TypeAlias, TypeVar
 
 from util import conditional_jit
 
-class LogDensity(eqx.Module):
-    log_prob: Callable[[Array], Float[Array, ""]]
+#we have unobserved Variables being the parameters and observed variables (data). Priors are beliefs about the parameters, 
+# while The likelihood is the probability of the observed data given the parameters. 
+# In Bayesian inference, the likelihood connects the observed variables to the unobserved parameters.
 
-    def __init__(self, log_prob: Callable[[Array], Float[Array, ""]]):
-        self.log_prob = log_prob
-        
-    def __call__(self, q: Array) -> Float[Array, ""]:
-        return self.log_prob(q)
 
-def constant_log_density() -> LogDensity:
-    def log_prob(q: Array) -> Float[Array, ""]:
+Parameter = NewType('Parameter', Array)
+
+
+LikelihoodId = NewType('LikelihoodId', str)
+LogProbability = NewType('LogProbability', Float[Array, ""])
+
+class ObservableProvider(ABC):
+    @abstractmethod
+    def __call__(self) -> Array:
+        pass
+
+
+Variable = Parameter | ObservableProvider
+
+T = TypeVar('T', bound=Parameter)
+U = TypeVar('U', bound=ObservableProvider)
+
+class IdentityObservableProvider(ObservableProvider):
+    def __call__(self) -> Array:
         return jnp.array(0.0)
-    return LogDensity(log_prob) 
 
-def normal_log_density(
-    mean: Callable[[Array], Array],
-    std: Callable[[Array], Array]) -> LogDensity:
-    def log_prob(q: Array) -> Float[Array, ""]:
-        return jnp.sum(-0.5 * ((q - mean(q)) / std(q)) ** 2)
-
-    return LogDensity(log_prob)
-
-def exponential_log_density(rate: Array = jnp.array(1.0)) -> LogDensity:
-    def log_prob(q: Array) -> Float[Array, ""]:
-        return jnp.sum(jnp.log(rate) - rate * q)
-    return LogDensity(log_prob)
-
-def parameterized_normal_log_density(
-    mean: Callable[[Array], Array],
-    std: Callable[[Array], Array]
-) -> LogDensity:
-    def log_prob(q: Array) -> Float[Array, ""]:
-        y_pred = mean(q)
-        std_value = std(q)
-        return jnp.sum(-0.5 * ((q - y_pred) / std_value) ** 2 - jnp.log(std_value) - 0.5 * jnp.log(2 * jnp.pi))
-    return LogDensity(log_prob)
-
-
-
-class ObservableProvider:
+class DataObservableProvider(ObservableProvider):
     def __init__(self, data_fn: Callable[[], Array]):
-        self.data_fn = data_fn
+        self._data_fn = data_fn
 
     def __call__(self) -> Array:
-        return self.data_fn()
+        return self._data_fn()
 
-NeutralObservableProvider = NewType('NeutralObservableProvider', ObservableProvider)
-neutral_observable_provider = NeutralObservableProvider(ObservableProvider(lambda: jnp.array(0.0)))
+class LogDensity(eqx.Module, Generic[T, U]):
+    log_prob: Callable[[T,U], LogProbability]
 
-ZeroLogDensity = NewType('ZeroLogDensity', LogDensity)
-zero_log_density = ZeroLogDensity(LogDensity(lambda q: jnp.array(0.0)))
+    def __init__(self, log_prob: Callable[[T,U], LogProbability]):
+        self.log_prob = log_prob
 
-class Likeihood(LogDensity):
-    def __init__(self, log_density: LogDensity, observable_provider: ObservableProvider):
-        self.log_density = log_density
-        self.observable_provider = observable_provider
-        super().__init__(self.log_prob)
-    
-    def log_prob(self, q: Array) -> Float[Array, ""]:
-        match self.log_density:
-            case ZeroLogDensity():
-                return jnp.array(0.0)
+    def __call__(self, params: T, observable_provider: U) -> LogProbability:
+        return self.log_prob(params, observable_provider)
+
+class PriorLogDensity(LogDensity[T, IdentityObservableProvider]):
+    def __init__(self, log_prob: Callable[[T, IdentityObservableProvider], LogProbability]):
+        super().__init__(log_prob)
+
+LikelihoodLogDensity: TypeAlias = LogDensity[T, U]
+
+def constant_log_density() -> PriorLogDensity[Parameter]:
+    def log_prob(params: Parameter, _: IdentityObservableProvider) -> LogProbability:
+        return LogProbability(jnp.array(0.0))
+    return PriorLogDensity(log_prob)
+
+def normal_log_density(
+    mean: Callable[[Parameter], Array],
+    std: Callable[[Parameter], Array]) -> PriorLogDensity[Parameter]:
+    def log_prob(params: Parameter, _: IdentityObservableProvider) -> LogProbability:
+        return LogProbability(jnp.sum(-0.5 * ((params - mean(params)) / std(params)) ** 2))
+    return PriorLogDensity(log_prob)
+
+def exponential_log_density(rate: Array = jnp.array(1.0)) -> PriorLogDensity[Parameter]:
+    def log_prob(params: Parameter, _: IdentityObservableProvider) -> LogProbability:
+        return LogProbability(jnp.sum(jnp.log(rate) - rate * params))
+    return PriorLogDensity(log_prob)
+
+def create_likelihood_log_density(
+    distribution_log_prob: Callable[[Parameter, ObservableProvider], LogProbability]
+) -> Callable[[Parameter, ObservableProvider], LogProbability]:
+    def log_prob(params: Parameter, observable_provider: ObservableProvider) -> LogProbability:
+        match observable_provider:
+            case IdentityObservableProvider():
+                return LogProbability(jnp.array(0.0))
             case _:
-                return self.log_density.log_prob(q)
+                return distribution_log_prob(params, observable_provider)
+    return log_prob
 
-
-class LikelihoodBuilder
-
-
-class NormalLogDensity(LogDensity):
-
-    mean: Callable[[Array], Array]
-    std: Callable[[Array], Array]
-    observable_provider: ObservableProvider
-
-    def __init__(self, mean: Callable[[Array], Array], std: Callable[[Array], Array], observable_provider: ObservableProvider):
-        self.mean = mean
-        self.std = std  
-        self.observable_provider = observable_provider
-        super().__init__(self.log_prob)
+def likelihood_normal_log_density(
+    mean: Callable[[Parameter, ObservableProvider], Array],
+    std: Callable[[Parameter, ObservableProvider], Array]
+) -> LikelihoodLogDensity[Parameter, ObservableProvider]:
+    def normal_log_prob(params: Parameter, observable_provider: ObservableProvider) -> LogProbability:
+        y_pred = mean(params, observable_provider)
+        std_value = std(params, observable_provider)
+        return LogProbability(jnp.sum(-0.5 * ((observable_provider() - y_pred) / std_value) ** 2 - jnp.log(std_value) - 0.5 * jnp.log(2 * jnp.pi)))
     
-    @classmethod
-    def normal_likelihood(cls, mean: Callable[[Array], Array], std: Callable[[Array], Array]) -> 'NormalLogDensity':
-        instance = cls(mean, std, neutral_observable_provider)
-        return instance
+    return LogDensity(create_likelihood_log_density(normal_log_prob))
 
-    def log_prob(self, q: Array) -> Float[Array, ""]:
-        y_pred = self.mean(q)
-        std_value = self.std(q)
-        return jnp.sum(-0.5 * ((q - y_pred) / std_value) ** 2 - jnp.log(std_value) - 0.5 * jnp.log(2 * jnp.pi)) 
+
 
 class BayesianModel(eqx.Module):
     log_densities: Tuple[LogDensity, ...]
@@ -115,9 +113,17 @@ class BayesianModel(eqx.Module):
     @conditional_jit(use_jit=True)
     def gradient(self, q: Array) -> Array:
         return jax.grad(self.potential_energy)(q)
+    
+    def bind_data(self, data: dict[LikelihoodId, Callable[[], Array]]) -> 'BayesianModel':
+        new_log_densities = []
+        for ld in self.log_densities:
+            if isinstance(ld, Likelihood) and ld.id in data:
+                new_ld = bind_data_to_likelihood(ld, data[ld.id])
+                new_log_densities.append(new_ld)
+            else:
+                new_log_densities.append(ld)
+        return BayesianModel(tuple(new_log_densities))
 
-def bind_data(model: BayesianModel, data: dict) -> BayesianModel:
-    return BayesianModel(model.log_densities)
 
 def sample_prior(model: BayesianModel, key, shape):
     # This is a placeholder. Actual implementation would depend on the specific priors.
