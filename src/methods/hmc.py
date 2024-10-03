@@ -1,13 +1,13 @@
 from typing import Callable, Tuple
 from jax import random, lax, debug
 import jax.numpy as jnp
-import equinox as eqx
 from jaxtyping import Float, Bool, Array, PRNGKeyArray
 
 from logging_utils import hamiltonians_print, acceptance_print, step_output_print, \
     after_leapfrog_print, generated_momentum_print, step_input_print
 from methods.potential_energy import BayesianModel
 from base.data import JaxHMCData
+from util import conditional_jit
 
 StepFunc = Callable[[BayesianModel, JaxHMCData], JaxHMCData]
 
@@ -37,7 +37,7 @@ def metropolis_accept(key: PRNGKeyArray, current_h: Float[Array, ""], proposed_h
     accept = jnp.log(random.uniform(subkey)) < log_accept_prob
     return accept, key
 
-
+@conditional_jit(use_jit=True)
 def step(U: BayesianModel, input: JaxHMCData) -> JaxHMCData:
     q = input.current_q
     key, subkey = random.split(input.key)
@@ -71,5 +71,3 @@ def step(U: BayesianModel, input: JaxHMCData) -> JaxHMCData:
     debug.callback(step_output_print, q_new=q_new, key=key)
 
     return JaxHMCData(epsilon=input.epsilon, L=input.L, current_q=q_new, key=key)
-# Convert step to an Equinox filter function
-step_filter = eqx.filter_jit(step)
