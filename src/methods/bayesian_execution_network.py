@@ -1,7 +1,7 @@
 import jax
 import jax.numpy as jnp
 import equinox as eqx
-from typing import Callable, Generic, NewType, Optional, TypeVar
+from typing import Callable, Generic, NewType, TypeVar
 from jaxtyping import Array, Float
 
 Parameter = NewType('Parameter', Array)
@@ -92,11 +92,11 @@ class QueryPlan(Generic[U, V]):
     def __init__(self, nodes: list[NodeType]):
         self.nodes = nodes
 
-def normal_log_density(
+def normal_prior(
     mean: Callable[[U], Array],
     std: Callable[[U], Array]
-) -> Callable[[U, Optional[V]], Float[Array, ""]]:
-    def log_prob(params: U, _: Optional[V] = None) -> Float[Array, ""]:
+) -> Callable[[U], Float[Array, ""]]:
+    def log_prob(params: U) -> Float[Array, ""]:
         return jnp.sum(-0.5 * ((params - mean(params)) / std(params)) ** 2)
     return log_prob
 
