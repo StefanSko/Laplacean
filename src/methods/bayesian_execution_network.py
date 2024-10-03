@@ -79,8 +79,10 @@ class LikelihoodNode(Generic[U, V], eqx.Module):
     def evaluate(self, params: U) -> Float[Array, ""]:
         return self.state.data.map(lambda d: self.state.log_likelihood(params, d)).value_or(jnp.array(0.0))
 
-    def bind_data(self, data: V) -> None:
-        self.state = LikelihoodState(self.state.log_likelihood, JaxMaybe.just(data))
+    @classmethod
+    def bind_data(cls, node: 'LikelihoodNode[U, V]', data: V) -> 'LikelihoodNode[U, V]':
+        new_state = LikelihoodState(node.state.log_likelihood, JaxMaybe.just(data))
+        return cls(node.node_id, new_state.log_likelihood, new_state.data)
 
 class SubModelNode(Generic[U, V], eqx.Module):
     
@@ -146,9 +148,10 @@ def execute_query_plan(query_plan: QueryPlan[U, V], params: U) -> Float[Array, "
 def bind_data(target_id: int, data: V, query_plan: QueryPlan[U, V]) -> QueryPlan[U, V]:
     def update_node(node: NodeType) -> NodeType:
         if isinstance(node, LikelihoodNode) and node.node_id == target_id:
-            node.bind_data(data)
-        elif isinstance(node, SubModelNode) and node.node_id == target_id:
-            node.sub_model = bind_data(target_id, data, node.sub_model)
+            return LikelihoodNode.bind_data(node, data)
+        elif isinstance(node, SubModelNode):
+            updated_sub_model = bind_data(target_id, data, node.sub_model)
+            return SubModelNode(node.node_id, updated_sub_model)
         return node
     
     updated_nodes = [update_node(node) for node in query_plan.nodes]
