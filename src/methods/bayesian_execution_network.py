@@ -1,11 +1,11 @@
 import jax
 import jax.numpy as jnp
 import equinox as eqx
-from typing import Callable, Generic, NewType, TypeVar
+from typing import Callable, Generic, TypeVar
 from jaxtyping import Array, Float
 
-Parameter = NewType('Parameter', Array)
-Data = NewType('Data', Array)
+Parameter = Array
+Data = Array
 
 Variable = Parameter | Data
 
@@ -107,6 +107,16 @@ def normal_prior(
     def log_prob(params: U) -> Float[Array, ""]:
         return jnp.sum(-0.5 * ((params - mean(params)) / std(params)) ** 2)
     return log_prob
+
+def normal_likelihood(
+    mean: Callable[[U,V], Array],
+    std: Callable[[U,V], Array]
+) -> Callable[[U, V], Float[Array, ""]]:
+    def log_likelihood(params: U, data: V) -> Float[Array, ""]:
+        y_pred = mean(params, data)
+        std_value = std(params, data)
+        return jnp.sum(-0.5 * ((data - y_pred) / std_value) ** 2 - jnp.log(std_value) - 0.5 * jnp.log(2 * jnp.pi))
+    return log_likelihood
 
 def create_prior_node(node_id: int, log_density: Callable[[U], Float[Array, ""]]) -> PriorNode[U]:
     return PriorNode(node_id, log_density)
