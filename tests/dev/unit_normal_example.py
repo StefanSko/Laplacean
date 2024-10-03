@@ -1,4 +1,3 @@
-
 import jax.numpy as jnp
 import jax.random as random
 import seaborn as sns
@@ -6,26 +5,33 @@ from matplotlib import pyplot as plt
 
 from logging_utils import logger
 from methods.hmc import step
-from methods.potential_energy import BayesianModel, normal_log_density
 from sampler.sampling import Sampler
 from base.data import JaxHMCData
-
+from methods.bayesian_execution_network import (
+    BayesianExecutionModel, create_prior_node, execute_query_plan, QueryPlan, normal_prior
+)
 
 initial_q = jnp.array([1.])
 
 input: JaxHMCData = JaxHMCData(epsilon=0.1, L=10, current_q=initial_q, key=random.PRNGKey(0))
 sampler = Sampler()
 
-
 def f_mean(x):
     return jnp.array(0.0)
+
 def f_std(x):
     return jnp.array(1.0)
 
-normal = normal_log_density(f_mean, f_std)
+normal = normal_prior(f_mean, f_std)
 
-# Define the prior (Gaussian with mean 0 and variance 1)
-model = BayesianModel((normal,))
+# Create a prior node
+prior_node = create_prior_node(0, normal)
+
+# Create a query plan
+query_plan = QueryPlan([prior_node])
+
+# Create a BayesianExecutionModel
+model = BayesianExecutionModel(query_plan)
 
 samples = sampler(step, input, model)
 
