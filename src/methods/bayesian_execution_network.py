@@ -57,6 +57,10 @@ class LikelihoodState(eqx.Module, Generic[U, V]):
         self.data = data
 
 class PriorNode(Generic[U], eqx.Module):
+    
+    node_id: int
+    log_density: Callable[[U], Float[Array, ""]]
+    
     def __init__(self, node_id: int, log_density: Callable[[U], Float[Array, ""]]):
         self.node_id = node_id
         self.log_density = log_density
@@ -78,7 +82,11 @@ class LikelihoodNode(Generic[U, V], eqx.Module):
     def bind_data(self, data: V) -> None:
         self.state = LikelihoodState(self.state.log_likelihood, JaxMaybe.just(data))
 
-class SubModelNode(Generic[U, V]):
+class SubModelNode(Generic[U, V], eqx.Module):
+    
+    node_id: int
+    sub_model: 'QueryPlan[U, V]'
+    
     def __init__(self, node_id: int, sub_model: 'QueryPlan[U, V]'):
         self.node_id = node_id
         self.sub_model = sub_model
@@ -123,7 +131,7 @@ def evaluate_node(node: PriorNode[U] | LikelihoodNode[U, V] | SubModelNode[U, V]
     return jnp.array(0.0)
 
 def execute_query_plan(query_plan: QueryPlan[U, V], params: U) -> Float[Array, ""]:
-    return jnp.sum(jnp.array(node.evaluate(params) for node in query_plan.nodes))
+    return jnp.sum(jnp.array([node.evaluate(params) for node in query_plan.nodes]))
 
 def bind_data(target_id: int, data: V, query_plan: QueryPlan[U, V]) -> QueryPlan[U, V]:
     def update_node(node: NodeType) -> NodeType:
@@ -135,3 +143,18 @@ def bind_data(target_id: int, data: V, query_plan: QueryPlan[U, V]) -> QueryPlan
     
     updated_nodes = [update_node(node) for node in query_plan.nodes]
     return QueryPlan(updated_nodes)
+
+class BayesianExecutionModel(eqx.Module, Generic[U, V]):
+    query_plan: QueryPlan[U, V]
+
+    def __init__(self, query_plan: QueryPlan[U, V]):
+        self.query_plan = query_plan
+
+    def __call__(self, params: U) -> Float[Array, ""]:
+        return execute_query_plan(self.query_plan, params)
+
+    def potential_energy(self, params: U) -> Float[Array, ""]:
+        return -self(params)
+
+    def gradient(self, params: U) -> Array:
+        return jax.grad(self.potential_energy)(params)
