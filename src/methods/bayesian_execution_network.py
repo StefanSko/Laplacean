@@ -41,7 +41,12 @@ class JaxMaybe(Generic[T], eqx.Module):
 
     def map(self, f: Callable[[T], T]) -> 'JaxMaybe[T]':
         return JaxMaybe(
-            jax.lax.cond(self.is_just, f, lambda: None, self.value),
+            jax.lax.cond(
+                self.is_just,
+                lambda v: f(v),
+                lambda v: jnp.array(0.0),
+                self.value
+            ),
             self.is_just
         )
 
@@ -128,10 +133,6 @@ def create_likelihood_node(node_id: int, log_likelihood: Callable[[U, V], Float[
 
 def create_sub_model_node(node_id: int, sub_model: QueryPlan[U, V]) -> SubModelNode[U, V]:
     return SubModelNode(node_id, sub_model)
-
-def associate_data(data: V, node: LikelihoodNode[U, V]) -> LikelihoodNode[U, V]:
-    node.bind_data(data)
-    return node
 
 def evaluate_node(node: PriorNode[U] | LikelihoodNode[U, V] | SubModelNode[U, V], params: U) -> Float[Array, ""]:
     if isinstance(node, PriorNode):
