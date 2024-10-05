@@ -3,84 +3,94 @@ import jax.random as random
 import seaborn as sns
 from matplotlib import pyplot as plt
 
-from logging_utils import logger
+from methods.bayesian_execution_network import (
+    BayesianExecutionModel, QueryPlan, create_prior_node, create_likelihood_node,
+    normal_prior, exponential_prior, normal_likelihood, bind_data
+)
 from methods.hmc import step
 from sampler.sampling import Sampler
 from base.data import JaxHMCData
-from methods.bayesian_execution_network import (
-    BayesianExecutionModel, create_prior_node, create_likelihood_node, QueryPlan,
-    normal_prior, normal_likelihood, bind_data
-)
-
-# Set up the random key
-key = random.PRNGKey(0)
-
-# Generate data from N(1, 2)
-true_mean = 1.0
-true_std = 2.0
-num_samples = 10000
-key, subkey = random.split(key)
-data = random.normal(subkey, shape=(num_samples,)) * true_std + true_mean
 
 # Set up the model
-initial_q = jnp.array([0.0])  # Initial guess for [mean, log(std)]
-
-input: JaxHMCData = JaxHMCData(epsilon=0.01, L=10, current_q=initial_q, key=key)
-sampler = Sampler()
-
-# Prior: N(0, 1) for mean, and N(0, 1) for log(std)
-def prior_mean(x):
+def mu_mean(params):
     return jnp.array(0.0)
 
-def prior_std(x):
+def mu_std(params):
     return jnp.array(1.0)
 
-prior = normal_prior(prior_mean, prior_std)
+def sigma_rate(params):
+    return jnp.array(1.0)  # rate parameter for exponential distribution
 
-# Likelihood: N(mean, exp(log_std))
-def likelihood_mean(_, data):
-    return jnp.mean(data)
+def likelihood_mean(params, data):
+    return params[0]  # mu
 
-def likelihood_std(_, data):
-    return jnp.std(data)
-
-likelihood = normal_likelihood(likelihood_mean, likelihood_std)
+def likelihood_std(params, data):
+    return params[1]  # sigma (no need for exp now)
 
 # Create nodes
-prior_node = create_prior_node(0, prior)
-likelihood_node = create_likelihood_node(1, likelihood)
+mu_prior = create_prior_node(0, normal_prior(mu_mean, mu_std))
+sigma_prior = create_prior_node(1, exponential_prior(sigma_rate))
+likelihood = create_likelihood_node(2, normal_likelihood(likelihood_mean, likelihood_std))
 
-# Create a query plan
-query_plan = QueryPlan([prior_node, likelihood_node])
+# Create query plan
+query_plan = QueryPlan([mu_prior, sigma_prior, likelihood])
+
+# Simulate data
+key = random.PRNGKey(0)
+true_mu, true_sigma = 1.0, 2.0
+n_samples = 1000
+data = random.normal(key, shape=(n_samples,)) * true_sigma + true_mu
+
 
 # Bind data to the likelihood node
-query_plan = bind_data(1, data, query_plan)
+query_plan = bind_data(2, data, query_plan)
 
-# Create a BayesianExecutionModel
+# Create model
 model = BayesianExecutionModel(query_plan)
 
+# Set up HMC
+initial_params = jnp.array([0.0, 1.0])  # [mu, sigma]
+input_data = JaxHMCData(epsilon=0.01, L=10, current_q=initial_params, key=random.PRNGKey(1))
+sampler = Sampler()
+
 # Run HMC
-num_samples = 5000
-samples = sampler(step, input, model, num_samples=num_samples)
+n_iterations = 5000
+samples = sampler(step, input_data, model, num_samples = n_iterations)
 
-# Extract mean and std from samples
-mean_samples = samples[:, 0]
-std_samples = jnp.exp(samples[:, 1])
+mu_samples = samples[:, 0]
+sigma_samples = samples[:, 1]
 
-# Calculate statistics
-mean_estimate = jnp.mean(mean_samples)
-std_estimate = jnp.mean(std_samples)
+print(f"True mu: {true_mu}, Estimated mu: {jnp.mean(mu_samples):.4f}")
+print(f"True sigma: {true_sigma}, Estimated sigma: {jnp.mean(sigma_samples):.4f}")
 
-logger.info(f"True mean: {true_mean}, Estimated mean: {mean_estimate}")
-logger.info(f"True std: {true_std}, Estimated std: {std_estimate}")
+# Plot results
+fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
 
-sns.kdeplot(samples)
-plt.xlabel('Sample Value')
-plt.title('Distribution of Samples')
+sns.histplot(mu_samples, kde=True, ax=ax1)
+ax1.axvline(true_mu, color='r', linestyle='--')
+ax1.set_title('Posterior distribution of μ')
+ax1.set_xlabel('μ')
+
+sns.histplot(sigma_samples, kde=True, ax=ax2)
+ax2.axvline(true_sigma, color='r', linestyle='--')
+ax2.set_title('Posterior distribution of σ')
+ax2.set_xlabel('σ')
+
+plt.tight_layout()
 plt.show()
 
-sns.lineplot(samples)
-plt.xlabel('Step')
-plt.ylabel('Sample Value')
-plt.title('Trace of Samples')
+# Trace plots
+fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 8))
+
+ax1.plot(mu_samples)
+ax1.set_title('Trace of μ')
+ax1.set_xlabel('Iteration')
+ax1.set_ylabel('μ')
+
+ax2.plot(sigma_samples)
+ax2.set_title('Trace of σ')
+ax2.set_xlabel('Iteration')
+ax2.set_ylabel('σ')
+
+plt.tight_layout()
 plt.show()
