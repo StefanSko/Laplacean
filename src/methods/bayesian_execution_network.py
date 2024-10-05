@@ -115,6 +115,13 @@ def normal_prior(
         return jnp.sum(-0.5 * ((params - mean(params)) / std(params)) ** 2)
     return log_prob
 
+def exponential_prior(
+    rate: Callable[[U], Array]
+) -> Callable[[U], Float[Array, ""]]:
+    def log_prob(params: U) -> Float[Array, ""]:
+        return jnp.sum(jnp.log(rate(params)) - rate(params) * params)
+    return log_prob
+
 def normal_likelihood(
     mean: Callable[[U,V], Array],
     std: Callable[[U,V], Array]
