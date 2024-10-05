@@ -6,6 +6,7 @@ from jaxtyping import Array, Float
 
 Parameter = Array
 Data = Array
+LogDensity = Float[Array, ""]
 
 Variable = Parameter | Data
 
@@ -13,6 +14,7 @@ T = TypeVar('T', bound=Variable)
 U = TypeVar('U', bound=Parameter)
 V = TypeVar('V', bound=Data)
 
+NONE: LogDensity = jnp.array(0.0)
 
 class JaxMaybe(Generic[T], eqx.Module):
     value: T
@@ -28,7 +30,7 @@ class JaxMaybe(Generic[T], eqx.Module):
 
     @classmethod
     def nothing(cls):
-        return cls(None, jnp.array(False))
+        return cls(NONE, jnp.array(False))
     
     @classmethod
     def from_optional(cls, value: T):
@@ -44,7 +46,7 @@ class JaxMaybe(Generic[T], eqx.Module):
             jax.lax.cond(
                 self.is_just,
                 lambda v: f(v),
-                lambda v: jnp.array(0.0),
+                lambda v: NONE,
                 self.value
             ),
             self.is_just
@@ -54,34 +56,34 @@ class JaxMaybe(Generic[T], eqx.Module):
         return jax.lax.cond(self.is_just, lambda: self.value, lambda: default)
 
 class LikelihoodState(eqx.Module, Generic[U, V]):
-    log_likelihood: Callable[[U, V], Float[Array, ""]]
+    log_likelihood: Callable[[U, V], LogDensity]
     data: JaxMaybe[V]
 
-    def __init__(self, log_likelihood: Callable[[U, V], Float[Array, ""]], data: JaxMaybe[V]):
+    def __init__(self, log_likelihood: Callable[[U, V], LogDensity], data: JaxMaybe[V]):
         self.log_likelihood = log_likelihood
         self.data = data
 
 class PriorNode(Generic[U], eqx.Module):
     
     node_id: int
-    log_density: Callable[[U], Float[Array, ""]]
+    log_density: Callable[[U], LogDensity]
     
-    def __init__(self, node_id: int, log_density: Callable[[U], Float[Array, ""]]):
+    def __init__(self, node_id: int, log_density: Callable[[U], LogDensity]):
         self.node_id = node_id
         self.log_density = log_density
 
-    def evaluate(self, params: U) -> Float[Array, ""]:
+    def evaluate(self, params: U) -> LogDensity:
         return self.log_density(params)
 
 class LikelihoodNode(Generic[U, V], eqx.Module):
     node_id: int
     state: LikelihoodState
     
-    def __init__(self, node_id: int, log_likelihood: Callable[[U, V], Float[Array, ""]], data: JaxMaybe[V]):
+    def __init__(self, node_id: int, log_likelihood: Callable[[U, V], LogDensity], data: JaxMaybe[V]):
         self.node_id = node_id
         self.state = LikelihoodState(log_likelihood, data)
 
-    def evaluate(self, params: U) -> Float[Array, ""]:
+    def evaluate(self, params: U) -> LogDensity:
         return self.state.data.map(lambda d: self.state.log_likelihood(params, d)).value_or(jnp.array(0.0))
 
     @classmethod
@@ -98,7 +100,7 @@ class SubModelNode(Generic[U, V], eqx.Module):
         self.node_id = node_id
         self.sub_model = sub_model
 
-    def evaluate(self, params: U) -> Float[Array, ""]:
+    def evaluate(self, params: U) -> LogDensity:
         return execute_query_plan(self.sub_model, params)
 
 NodeType = PriorNode[U] | LikelihoodNode[U, V] | SubModelNode[U, V]
@@ -110,38 +112,38 @@ class QueryPlan(Generic[U, V]):
 def normal_prior(
     mean: Callable[[U], Array],
     std: Callable[[U], Array]
-) -> Callable[[U], Float[Array, ""]]:
-    def log_prob(params: U) -> Float[Array, ""]:
+) -> Callable[[U], LogDensity]:
+    def log_prob(params: U) -> LogDensity:
         return jnp.sum(-0.5 * ((params - mean(params)) / std(params)) ** 2)
     return log_prob
 
 def exponential_prior(
     rate: Callable[[U], Array]
-) -> Callable[[U], Float[Array, ""]]:
-    def log_prob(params: U) -> Float[Array, ""]:
+) -> Callable[[U], LogDensity]:
+    def log_prob(params: U) -> LogDensity:
         return jnp.sum(jnp.log(rate(params)) - rate(params) * params)
     return log_prob
 
 def normal_likelihood(
     mean: Callable[[U,V], Array],
     std: Callable[[U,V], Array]
-) -> Callable[[U, V], Float[Array, ""]]:
-    def log_likelihood(params: U, data: V) -> Float[Array, ""]:
+) -> Callable[[U, V], LogDensity]:
+    def log_likelihood(params: U, data: V) -> LogDensity:
         y_pred = mean(params, data)
         std_value = std(params, data)
         return jnp.sum(-0.5 * ((data - y_pred) / std_value) ** 2 - jnp.log(std_value) - 0.5 * jnp.log(2 * jnp.pi))
     return log_likelihood
 
-def create_prior_node(node_id: int, log_density: Callable[[U], Float[Array, ""]]) -> PriorNode[U]:
+def create_prior_node(node_id: int, log_density: Callable[[U], LogDensity]) -> PriorNode[U]:
     return PriorNode(node_id, log_density)
 
-def create_likelihood_node(node_id: int, log_likelihood: Callable[[U, V], Float[Array, ""]]) -> LikelihoodNode[U, V]:
+def create_likelihood_node(node_id: int, log_likelihood: Callable[[U, V], LogDensity]) -> LikelihoodNode[U, V]:
     return LikelihoodNode(node_id, log_likelihood, JaxMaybe[V].nothing())
 
 def create_sub_model_node(node_id: int, sub_model: QueryPlan[U, V]) -> SubModelNode[U, V]:
     return SubModelNode(node_id, sub_model)
 
-def evaluate_node(node: PriorNode[U] | LikelihoodNode[U, V] | SubModelNode[U, V], params: U) -> Float[Array, ""]:
+def evaluate_node(node: PriorNode[U] | LikelihoodNode[U, V] | SubModelNode[U, V], params: U) -> LogDensity:
     if isinstance(node, PriorNode):
         return node.evaluate(params)
     elif isinstance(node, LikelihoodNode):
@@ -150,7 +152,7 @@ def evaluate_node(node: PriorNode[U] | LikelihoodNode[U, V] | SubModelNode[U, V]
         return execute_query_plan(node.sub_model, params)
     return jnp.array(0.0)
 
-def execute_query_plan(query_plan: QueryPlan[U, V], params: U) -> Float[Array, ""]:
+def execute_query_plan(query_plan: QueryPlan[U, V], params: U) -> LogDensity:
     return jnp.sum(jnp.array([node.evaluate(params) for node in query_plan.nodes]))
 
 def bind_data(target_id: int, data: V, query_plan: QueryPlan[U, V]) -> QueryPlan[U, V]:
@@ -171,10 +173,10 @@ class BayesianExecutionModel(eqx.Module, Generic[U, V]):
     def __init__(self, query_plan: QueryPlan[U, V]):
         self.query_plan = query_plan
 
-    def __call__(self, params: U) -> Float[Array, ""]:
+    def __call__(self, params: U) -> LogDensity:
         return execute_query_plan(self.query_plan, params)
 
-    def potential_energy(self, params: U) -> Float[Array, ""]:
+    def potential_energy(self, params: U) -> LogDensity:
         return -self(params)
 
     def gradient(self, params: U) -> Array:
