@@ -8,7 +8,7 @@ from methods.hmc import step
 from sampler.sampling import Sampler
 from base.data import JaxHMCData
 from methods.bayesian_execution_network import (
-    BayesianExecutionModel, create_prior_node, execute_query_plan, QueryPlan, normal_prior
+    BayesianExecutionModel, create_prior_node, QueryPlan, normal_prior
 )
 
 initial_q = jnp.array([1.])
