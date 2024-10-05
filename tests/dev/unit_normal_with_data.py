@@ -5,7 +5,7 @@ from matplotlib import pyplot as plt
 
 from methods.bayesian_execution_network import (
     BayesianExecutionModel, QueryPlan, create_prior_node, create_likelihood_node,
-    normal_prior, exponential_prior, normal_likelihood, bind_data
+    normal_prior, exponential_prior, normal_likelihood
 )
 from methods.hmc import step
 from sampler.sampling import Sampler
@@ -43,7 +43,7 @@ data = random.normal(key, shape=(n_samples,)) * true_sigma + true_mu
 
 
 # Bind data to the likelihood node
-query_plan = bind_data(2, data, query_plan)
+#query_plan = bind_data(2, data, query_plan)
 
 # Create model
 model = BayesianExecutionModel(query_plan)
