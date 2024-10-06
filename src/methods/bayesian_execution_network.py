@@ -118,11 +118,12 @@ def normal_prior(
         return jnp.sum(-0.5 * ((params - mean(params)) / std(params)) ** 2)
     return log_prob
 
+#TODO: Fix exponential prior for positivity
 def exponential_prior(
     rate: Callable[[U], Array]
 ) -> Callable[[U], LogDensity]:
     def log_prob(params: U) -> LogDensity:
-        return jnp.sum(jnp.log(rate(params)) - rate(params) * params)
+        return jnp.sum(jnp.log(rate(params)) - rate(params) * jnp.exp(params) + params)
     return log_prob
 
 def normal_likelihood(
