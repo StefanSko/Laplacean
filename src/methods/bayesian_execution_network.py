@@ -16,16 +16,16 @@ V = TypeVar('V', bound=Data)
 
 NONE: LogDensity = jnp.array(0.0)
 
-class JaxMaybe(Generic[T], eqx.Module):
-    value: T
+class MaybeArray(eqx.Module):
+    value: Array
     is_just: jnp.bool_
     
-    def __init__(self, value: T, is_just: jnp.bool_):
+    def __init__(self, value: Array, is_just: jnp.bool_):
         self.value = value
         self.is_just = is_just
 
     @classmethod
-    def just(cls, value: T):
+    def just(cls, value: Array):
         return cls(value, jnp.array(True))
 
     @classmethod
@@ -33,7 +33,7 @@ class JaxMaybe(Generic[T], eqx.Module):
         return cls(NONE, jnp.array(False))
     
     @classmethod
-    def from_optional(cls, value: T):
+    def from_optional(cls, value: Array):
         return jax.lax.cond(
             value is not None,
             lambda v: cls.just(v),
@@ -41,8 +41,8 @@ class JaxMaybe(Generic[T], eqx.Module):
             value
         )
 
-    def map(self, f: Callable[[T], T]) -> 'JaxMaybe[T]':
-        return JaxMaybe(
+    def map(self, f: Callable[[Array], Array]) -> 'MaybeArray':
+        return MaybeArray(
             jax.lax.cond(
                 self.is_just,
                 lambda v: f(v),
@@ -52,14 +52,14 @@ class JaxMaybe(Generic[T], eqx.Module):
             self.is_just
         )
 
-    def value_or(self, default: T) -> T:
+    def value_or(self, default: Array) -> Array:
         return jax.lax.cond(self.is_just, lambda: self.value, lambda: default)
 
 class LikelihoodState(eqx.Module, Generic[U, V]):
     log_likelihood: Callable[[U, V], LogDensity]
-    data: JaxMaybe[V]
+    data: MaybeArray
 
-    def __init__(self, log_likelihood: Callable[[U, V], LogDensity], data: JaxMaybe[V]):
+    def __init__(self, log_likelihood: Callable[[U, V], LogDensity], data: MaybeArray):
         self.log_likelihood = log_likelihood
         self.data = data
 
@@ -79,16 +79,17 @@ class LikelihoodNode(Generic[U, V], eqx.Module):
     node_id: int
     state: LikelihoodState
     
-    def __init__(self, node_id: int, log_likelihood: Callable[[U, V], LogDensity], data: JaxMaybe[V]):
+    def __init__(self, node_id: int, log_likelihood: Callable[[U, V], LogDensity], data: MaybeArray):
         self.node_id = node_id
         self.state = LikelihoodState(log_likelihood, data)
 
     def evaluate(self, params: U) -> LogDensity:
-        return self.state.data.map(lambda d: self.state.log_likelihood(params, d)).value_or(jnp.array(0.0))
+        #TODO: Make me lazy
+        return self.state.data.map(lambda d: self.state.log_likelihood(params, d)).value_or(NONE)
 
     @classmethod
     def bind_data(cls, node: 'LikelihoodNode[U, V]', data: V) -> 'LikelihoodNode[U, V]':
-        new_state = LikelihoodState(node.state.log_likelihood, JaxMaybe.just(data))
+        new_state = LikelihoodState(node.state.log_likelihood, MaybeArray.just(data))
         return cls(node.node_id, new_state.log_likelihood, new_state.data)
 
 class SubModelNode(Generic[U, V], eqx.Module):
@@ -138,7 +139,7 @@ def create_prior_node(node_id: int, log_density: Callable[[U], LogDensity]) -> P
     return PriorNode(node_id, log_density)
 
 def create_likelihood_node(node_id: int, log_likelihood: Callable[[U, V], LogDensity]) -> LikelihoodNode[U, V]:
-    return LikelihoodNode(node_id, log_likelihood, JaxMaybe[V].nothing())
+    return LikelihoodNode(node_id, log_likelihood, MaybeArray.nothing())
 
 def create_sub_model_node(node_id: int, sub_model: QueryPlan[U, V]) -> SubModelNode[U, V]:
     return SubModelNode(node_id, sub_model)
