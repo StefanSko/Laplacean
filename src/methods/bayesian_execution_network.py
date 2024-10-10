@@ -1,7 +1,7 @@
 import jax
 import jax.numpy as jnp
 import equinox as eqx
-from typing import Callable, Generic, TypeVar
+from typing import Callable, Generic, TypeVar, cast
 from jaxtyping import Array, Float
 
 Parameter = Array
@@ -123,7 +123,9 @@ def exponential_prior(
     rate: Callable[[U], Array]
 ) -> Callable[[U], LogDensity]:
     def log_prob(params: U) -> LogDensity:
-        return jnp.sum(jnp.log(rate(params)) - rate(params) * jnp.exp(params) + params)
+        # We're working in the log space, so no need to transform
+        log_p = jnp.sum(jnp.log(rate(params)) - jnp.exp(params) * rate(params))
+        return log_p
     return log_prob
 
 def normal_likelihood(

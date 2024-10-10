@@ -4,8 +4,8 @@ import seaborn as sns
 from matplotlib import pyplot as plt
 
 from methods.bayesian_execution_network import (
-    BayesianExecutionModel, QueryPlan, create_prior_node, create_likelihood_node,
-    normal_prior, exponential_prior, normal_likelihood
+    QueryPlan, create_prior_node, normal_prior, exponential_prior, BayesianExecutionModel, normal_likelihood,
+    create_likelihood_node
 )
 from methods.hmc import step
 from sampler.sampling import Sampler
@@ -27,13 +27,17 @@ def likelihood_mean(params, data):
 def likelihood_std(params, data):
     return params[1]  # sigma (no need for exp now)
 
+
 # Create nodes
 mu_prior = create_prior_node(0, normal_prior(mu_mean, mu_std))
 sigma_prior = create_prior_node(1, exponential_prior(sigma_rate))
+#sigma_prior = create_prior_node(1, normal_prior(mu_mean, mu_std))
 likelihood = create_likelihood_node(2, normal_likelihood(likelihood_mean, likelihood_std))
 
 # Create query plan
-query_plan = QueryPlan([mu_prior, sigma_prior, likelihood])
+#query_plan = QueryPlan([mu_prior, sigma_prior, likelihood])
+query_plan = QueryPlan([mu_prior, sigma_prior])
+
 
 # Simulate data
 key = random.PRNGKey(0)
@@ -50,15 +54,17 @@ model = BayesianExecutionModel(query_plan)
 
 # Set up HMC
 initial_params = jnp.array([0.0, 1.0])  # [mu, sigma]
-input_data = JaxHMCData(epsilon=0.01, L=10, current_q=initial_params, key=random.PRNGKey(1))
+input_data = JaxHMCData(epsilon=0.01, L=20, current_q=initial_params, key=random.PRNGKey(1))
 sampler = Sampler()
 
 # Run HMC
-n_iterations = 5000
-samples = sampler(step, input_data, model, num_samples = n_iterations)
+n_warmup = 1000
+n_iterations = 10000
+samples = sampler(step, input_data, model, num_warmup=n_warmup, num_samples=n_iterations)
+
 
 mu_samples = samples[:, 0]
-sigma_samples = samples[:, 1]
+sigma_samples = jnp.exp(samples[:, 1])  # Convert log(sigma) back to sigma
 
 print(f"True mu: {true_mu}, Estimated mu: {jnp.mean(mu_samples):.4f}")
 print(f"True sigma: {true_sigma}, Estimated sigma: {jnp.mean(sigma_samples):.4f}")
