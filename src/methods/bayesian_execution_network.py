@@ -1,8 +1,9 @@
 import jax
 import jax.numpy as jnp
 import equinox as eqx
-from typing import Callable, Generic, TypeVar, cast
+from typing import Callable, Generic, TypeVar
 from jaxtyping import Array, Float
+from jax.scipy.stats import expon
 
 Parameter = Array
 Data = Array
@@ -73,7 +74,7 @@ class PriorNode(Generic[U], eqx.Module):
         self.log_density = log_density
 
     def evaluate(self, params: U) -> LogDensity:
-        return self.log_density(params)
+        return self.log_density(params[self.node_id])
 
 class LikelihoodNode(Generic[U, V], eqx.Module):
     node_id: int
@@ -84,8 +85,7 @@ class LikelihoodNode(Generic[U, V], eqx.Module):
         self.state = LikelihoodState(log_likelihood, data)
 
     def evaluate(self, params: U) -> LogDensity:
-        #TODO: Make me lazy
-        return self.state.data.map(lambda d: self.state.log_likelihood(params, d)).value_or(NONE)
+        return self.state.data.map(lambda d: self.state.log_likelihood(params[self.node_id], d)).value_or(NONE)
 
     @classmethod
     def bind_data(cls, node: 'LikelihoodNode[U, V]', data: V) -> 'LikelihoodNode[U, V]':
@@ -118,14 +118,11 @@ def normal_prior(
         return jnp.sum(-0.5 * ((params - mean(params)) / std(params)) ** 2)
     return log_prob
 
-#TODO: Fix exponential prior for positivity
 def exponential_prior(
     rate: Callable[[U], Array]
 ) -> Callable[[U], LogDensity]:
     def log_prob(params: U) -> LogDensity:
-        # We're working in the log space, so no need to transform
-        log_p = jnp.sum(jnp.log(rate(params)) - jnp.exp(params) * rate(params))
-        return log_p
+        return expon.logpdf(params, scale=1/rate(params))
     return log_prob
 
 def normal_likelihood(
