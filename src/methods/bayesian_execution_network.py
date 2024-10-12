@@ -1,7 +1,7 @@
 import jax
 import jax.numpy as jnp
 import equinox as eqx
-from typing import Callable, Generic, TypeVar
+from typing import Callable, Generic, TypeVar, cast
 from jaxtyping import Array, Float
 from jax.scipy.stats import expon
 
@@ -74,7 +74,7 @@ class PriorNode(Generic[U], eqx.Module):
         self.log_density = log_density
 
     def evaluate(self, params: U) -> LogDensity:
-        return self.log_density(params[self.node_id])
+        return self.log_density(cast(U, params[self.node_id]))
 
 class LikelihoodNode(Generic[U, V], eqx.Module):
     node_id: int
