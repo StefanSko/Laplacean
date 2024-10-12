@@ -57,7 +57,7 @@ class MaybeArray(eqx.Module):
         return jax.lax.cond(self.is_just, lambda: self.value, lambda: default)
 
 
-#TODO: FIX node indexing for Likelihood
+#TODO: Think about long term node indexing for likelihood
 class LikelihoodState(eqx.Module, Generic[U, V]):
     log_likelihood: Callable[[U, V], LogDensity]
     data: MaybeArray
@@ -87,7 +87,7 @@ class LikelihoodNode(Generic[U, V], eqx.Module):
         self.state = LikelihoodState(log_likelihood, data)
 
     def evaluate(self, params: U) -> LogDensity:
-        return self.state.data.map(lambda d: self.state.log_likelihood(params[self.node_id], d)).value_or(NONE)
+        return self.state.data.map(lambda d: self.state.log_likelihood(params, d)).value_or(NONE)
 
     @classmethod
     def bind_data(cls, node: 'LikelihoodNode[U, V]', data: V) -> 'LikelihoodNode[U, V]':
