@@ -56,6 +56,8 @@ class MaybeArray(eqx.Module):
     def value_or(self, default: Array) -> Array:
         return jax.lax.cond(self.is_just, lambda: self.value, lambda: default)
 
+
+#TODO: FIX node indexing for Likelihood
 class LikelihoodState(eqx.Module, Generic[U, V]):
     log_likelihood: Callable[[U, V], LogDensity]
     data: MaybeArray
