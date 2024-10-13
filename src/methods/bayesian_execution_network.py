@@ -1,7 +1,7 @@
 import jax
 import jax.numpy as jnp
 import equinox as eqx
-from typing import Callable, Generic, Optional, TypeVar, cast
+from typing import Callable, Generic, Optional, TypeVar, cast, Any
 from jaxtyping import Array, Float
 from jax.scipy.stats import expon
 
@@ -17,14 +17,39 @@ V = TypeVar('V', bound=Data)
 
 NONE: LogDensity = jnp.array(0.0)
 
+class BayesVar(eqx.Module, Generic[T]):
+    value: T
+
+    def __init__(self, value: T):
+        self.value = value
+
+    def get(self) -> Any:
+        return self.value
+
+    def map(self, f: Callable[[T], Any]) -> Any:
+        return jax.lax.cond(
+            jnp.any(jnp.isnan(self.value)),
+            lambda _: NONE,
+            lambda x: f(x),
+            self.value
+        )
+
+    @classmethod
+    def empty(cls) -> 'BayesVar[T]':
+        return cls(cast(T, jnp.array(float('nan'))))
+
+    @classmethod
+    def just(cls, value: T) -> 'BayesVar[T]':
+        return cls(value)
+
 #TODO: Think about long term node indexing for likelihood
 class LikelihoodState(eqx.Module, Generic[U, V]):
     log_likelihood: Callable[[U, V], LogDensity]
-    data: Optional[V]
+    data: BayesVar[V]
 
-    def __init__(self, log_likelihood: Callable[[U, V], LogDensity], data: Optional[V]):
+    def __init__(self, log_likelihood: Callable[[U, V], LogDensity], data: Optional[V] = None):
         self.log_likelihood = log_likelihood
-        self.data = data
+        self.data = BayesVar.just(data) if data is not None else BayesVar.empty()
 
 class PriorNode(Generic[U], eqx.Module):
     
@@ -40,19 +65,14 @@ class PriorNode(Generic[U], eqx.Module):
 
 class LikelihoodNode(Generic[U, V], eqx.Module):
     node_id: int
-    state: LikelihoodState
+    state: LikelihoodState[U, V]
     
-    def __init__(self, node_id: int, log_likelihood: Callable[[U, V], LogDensity], data: Optional[V] = None):
+    def __init__(self, node_id: int, log_likelihood: Callable[[U, V], LogDensity], data: V = None):
         self.node_id = node_id
         self.state = LikelihoodState(log_likelihood, data)
 
     def evaluate(self, params: U) -> LogDensity:
-        return jax.lax.cond(
-            self.state.data is not None,
-            lambda _: self.state.log_likelihood(params, self.state.data),
-            lambda _: NONE,
-            operand=None
-        )   
+        return self.state.data.map(lambda d: self.state.log_likelihood(params, d))
 
     @classmethod
     def bind_data(cls, node: 'LikelihoodNode[U, V]', data: V) -> 'LikelihoodNode[U, V]':
@@ -106,7 +126,7 @@ def create_prior_node(node_id: int, log_density: Callable[[U], LogDensity]) -> P
     return PriorNode(node_id, log_density)
 
 def create_likelihood_node(node_id: int, log_likelihood: Callable[[U, V], LogDensity]) -> LikelihoodNode[U, V]:
-    return LikelihoodNode(node_id, log_likelihood)
+    return LikelihoodNode(node_id, log_likelihood, data = None)
 
 def create_sub_model_node(node_id: int, sub_model: QueryPlan[U, V]) -> SubModelNode[U, V]:
     return SubModelNode(node_id, sub_model)
