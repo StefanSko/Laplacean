@@ -76,26 +76,8 @@ class PriorNode(Generic[U], eqx.Module):
         self.log_density = log_density
 
     def evaluate(self, params: U) -> LogDensity:
-        selected_params = self._select_params(params)
+        selected_params = _select_params(params, self.param_index)
         return self.log_density(selected_params)
-
-    def _select_params(self, params: U) -> U:
-        match self.param_index:
-            case SingleParam(index):
-                return cast(U, params[index])
-            case ParamVector(start, end):
-                return cast(U, params[start:end])
-            case ParamMatrix(row, col):
-                return cast(U, params[self._get_slice(row), self._get_slice(col)])
-            case _:
-                raise ValueError(f"Unsupported param_index type: {type(self.param_index)}")
-
-    def _get_slice(self, index: int | ParamVector) -> slice:
-        match index:
-            case int():
-                return slice(index, index + 1)
-            case ParamVector(start, end):
-                return slice(start, end)
 
 class LikelihoodNode(Generic[U, V], eqx.Module):
     node_id: int
@@ -108,26 +90,9 @@ class LikelihoodNode(Generic[U, V], eqx.Module):
         self.state = LikelihoodState(log_likelihood, data)
 
     def evaluate(self, params: U) -> LogDensity:
-        selected_params = self._select_params(params)
+        selected_params = _select_params(params, self.param_index)
         return self.state.data.map(lambda d: self.state.log_likelihood(selected_params, d))
 
-    def _select_params(self, params: U) -> U:
-        match self.param_index:
-            case SingleParam(index):
-                return cast(U, params[index])
-            case ParamVector(start, end):
-                return cast(U, params[start:end])
-            case ParamMatrix(row, col):
-                return cast(U, params[self._get_slice(row), self._get_slice(col)])
-            case _:
-                raise ValueError(f"Unsupported param_index type: {type(self.param_index)}")
-
-    def _get_slice(self, index: int | ParamVector) -> slice:
-        match index:
-            case int():
-                return slice(index, index + 1)
-            case ParamVector(start, end):
-                return slice(start, end)
 
     @classmethod
     def bind_data(cls, node: 'LikelihoodNode[U, V]', data: V) -> 'LikelihoodNode[U, V]':
