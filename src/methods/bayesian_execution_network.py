@@ -1,9 +1,9 @@
 import jax
 import jax.numpy as jnp
 import equinox as eqx
-from typing import Callable, Generic, Optional, TypeVar, cast, Any
+from typing import Callable, Generic, NamedTuple, Optional, TypeVar, cast, Any
 from jaxtyping import Array, Float
-from jax.scipy.stats import expon
+from jax.scipy.stats import expon, norm
 
 Parameter = Array
 Data = Array
@@ -51,33 +51,88 @@ class LikelihoodState(eqx.Module, Generic[U, V]):
         self.log_likelihood = log_likelihood
         self.data = BayesVar.just(data) if data is not None else BayesVar.empty()
 
+
+class SingleParam(NamedTuple):
+    index: int
+
+class ParamVector(NamedTuple):
+    start: int = 0
+    end: int | None = None
+
+class ParamMatrix(NamedTuple):
+    row: int | ParamVector = ParamVector()
+    col: int | ParamVector = ParamVector()
+
+ParamIndex = SingleParam | ParamVector | ParamMatrix
+
 class PriorNode(Generic[U], eqx.Module):
-    
     node_id: int
+    param_index: ParamIndex
     log_density: Callable[[U], LogDensity]
     
-    def __init__(self, node_id: int, log_density: Callable[[U], LogDensity]):
+    def __init__(self, node_id: int, param_index: ParamIndex, log_density: Callable[[U], LogDensity]):
         self.node_id = node_id
+        self.param_index = param_index
         self.log_density = log_density
 
     def evaluate(self, params: U) -> LogDensity:
-        return self.log_density(cast(U, params[self.node_id]))
+        selected_params = self._select_params(params)
+        return self.log_density(selected_params)
+
+    def _select_params(self, params: U) -> U:
+        match self.param_index:
+            case SingleParam(index):
+                return cast(U, params[index])
+            case ParamVector(start, end):
+                return cast(U, params[start:end])
+            case ParamMatrix(row, col):
+                return cast(U, params[self._get_slice(row), self._get_slice(col)])
+            case _:
+                raise ValueError(f"Unsupported param_index type: {type(self.param_index)}")
+
+    def _get_slice(self, index: int | ParamVector) -> slice:
+        match index:
+            case int():
+                return slice(index, index + 1)
+            case ParamVector(start, end):
+                return slice(start, end)
 
 class LikelihoodNode(Generic[U, V], eqx.Module):
     node_id: int
+    param_index: ParamIndex
     state: LikelihoodState[U, V]
     
-    def __init__(self, node_id: int, log_likelihood: Callable[[U, V], LogDensity], data: V = None):
+    def __init__(self, node_id: int, param_index: ParamIndex, log_likelihood: Callable[[U, V], LogDensity], data: V = None):
         self.node_id = node_id
+        self.param_index = param_index
         self.state = LikelihoodState(log_likelihood, data)
 
     def evaluate(self, params: U) -> LogDensity:
-        return self.state.data.map(lambda d: self.state.log_likelihood(params, d))
+        selected_params = self._select_params(params)
+        return self.state.data.map(lambda d: self.state.log_likelihood(selected_params, d))
+
+    def _select_params(self, params: U) -> U:
+        match self.param_index:
+            case SingleParam(index):
+                return cast(U, params[index])
+            case ParamVector(start, end):
+                return cast(U, params[start:end])
+            case ParamMatrix(row, col):
+                return cast(U, params[self._get_slice(row), self._get_slice(col)])
+            case _:
+                raise ValueError(f"Unsupported param_index type: {type(self.param_index)}")
+
+    def _get_slice(self, index: int | ParamVector) -> slice:
+        match index:
+            case int():
+                return slice(index, index + 1)
+            case ParamVector(start, end):
+                return slice(start, end)
 
     @classmethod
     def bind_data(cls, node: 'LikelihoodNode[U, V]', data: V) -> 'LikelihoodNode[U, V]':
         new_state = LikelihoodState(node.state.log_likelihood, data)
-        return cls(node.node_id, new_state.log_likelihood, data)
+        return cls(node.node_id, node.param_index, new_state.log_likelihood, data)
 
 class SubModelNode(Generic[U, V], eqx.Module):
     
@@ -112,21 +167,45 @@ def exponential_prior(
         return expon.logpdf(params, scale=1/rate(params))
     return log_prob
 
+class ParamFunction(NamedTuple):
+    func: Callable[[U, V], Array]
+    param_index: ParamIndex
+
 def normal_likelihood(
-    mean: Callable[[U,V], Array],
-    std: Callable[[U,V], Array]
+    mean: ParamFunction,
+    std: ParamFunction
 ) -> Callable[[U, V], LogDensity]:
     def log_likelihood(params: U, data: V) -> LogDensity:
-        y_pred = mean(params, data)
-        std_value = std(params, data)
-        return jnp.sum(-0.5 * ((data - y_pred) / std_value) ** 2 - jnp.log(std_value) - 0.5 * jnp.log(2 * jnp.pi))
+        selected_params_mean = _select_params(params, mean.param_index)
+        selected_params_std = _select_params(params, std.param_index)
+        mean_value = mean.func(selected_params_mean, data)
+        std_value = std.func(selected_params_std, data)
+        return jnp.sum(norm.logpdf(data, mean_value, std_value))
     return log_likelihood
 
-def create_prior_node(node_id: int, log_density: Callable[[U], LogDensity]) -> PriorNode[U]:
-    return PriorNode(node_id, log_density)
+def _select_params(params: U, index: ParamIndex) -> U:
+    match index:
+        case SingleParam(i):
+            return cast(U, params[i])
+        case ParamVector(start, end):
+            return cast(U, params[start:end])
+        case ParamMatrix(row, col):
+            return cast(U, params[_get_slice(row), _get_slice(col)])
+        case _:
+            raise ValueError(f"Unsupported param_index type: {type(index)}")
 
-def create_likelihood_node(node_id: int, log_likelihood: Callable[[U, V], LogDensity]) -> LikelihoodNode[U, V]:
-    return LikelihoodNode(node_id, log_likelihood, data = None)
+def _get_slice(index: int | ParamVector) -> slice:
+    match index:
+        case int():
+            return slice(index, index + 1)
+        case ParamVector(start, end):
+            return slice(start, end)
+
+def create_prior_node(node_id: int, param_index: ParamIndex, log_density: Callable[[U], LogDensity]) -> PriorNode[U]:
+    return PriorNode(node_id, param_index, log_density)
+
+def create_likelihood_node(node_id: int, param_index: ParamIndex, log_likelihood: Callable[[U, V], LogDensity]) -> LikelihoodNode[U, V]:
+    return LikelihoodNode(node_id, param_index, log_likelihood)
 
 def create_sub_model_node(node_id: int, sub_model: QueryPlan[U, V]) -> SubModelNode[U, V]:
     return SubModelNode(node_id, sub_model)
