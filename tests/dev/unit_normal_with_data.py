@@ -31,7 +31,6 @@ def likelihood_std(params, data):
 # Create nodes
 mu_prior = create_prior_node(0, normal_prior(mu_mean, mu_std))
 sigma_prior = create_prior_node(1, exponential_prior(sigma_rate))
-#sigma_prior = create_prior_node(1, normal_prior(mu_mean, mu_std))
 likelihood = create_likelihood_node(2, normal_likelihood(likelihood_mean, likelihood_std))
 
 # Create query plan
