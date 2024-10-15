@@ -1,3 +1,9 @@
+we have unobserved Variables being the parameters and observed variables (data). Priors are beliefs about the parameters, 
+while The likelihood is the probability of the observed data given the parameters. 
+In Bayesian inference, the likelihood connects the observed variables to the unobserved parameters.
+
+
+
 I've been pondering deeply about Bayesian probabilistic modeling, and I've stumbled upon an intriguing way to reframe our understanding of the whole process. Here's what I'm thinking:
 What if we consider all data not as fixed observations, but as the output of some underlying, unknown probability distribution? This got me thinking about the nature of the likelihood function in a new light.
 In traditional Bayesian inference, we have our prior distribution over the parameters, and then we have this likelihood function that tells us how probable our data is given those parameters. But what if we look at it differently?
