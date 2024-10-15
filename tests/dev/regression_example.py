@@ -1,13 +1,13 @@
 import jax
 import jax.numpy as jnp
 import jax.random as random
-from jaxtyping import Array
 import seaborn as sns
 from matplotlib import pyplot as plt
 
+from methods.bayesian_execution_network import BayesianExecutionModel, ParamFunction, ParamVector, QueryPlan, \
+    SingleParam, create_likelihood_node, create_prior_node, exponential_prior, normal_likelihood, normal_prior, \
+    bind_data
 from methods.hmc import step
-from methods.potential_energy import BayesianModel, exponential_log_density, normal_log_density, \
-    parameterized_normal_log_density, bind_data
 from sampler.sampling import Sampler
 from base.data import JaxHMCData
 
@@ -23,25 +23,41 @@ y = alpha_true + beta_true * x + epsilon
 
 
 # Define the model components
-prior_alpha = normal_log_density(mean=jnp.array(0.0), std=jnp.array(1.0))
-prior_beta = normal_log_density(mean=jnp.array(0.0), std=jnp.array(1.0))
-prior_sigma = exponential_log_density()
+def alpha_mean(params):
+    return jnp.array(0.0)
 
-def mean_function(params: Array, x: Array) -> Array:
-    alpha, beta, _ = params
-    return alpha + beta * x
+def alpha_std(params):
+    return jnp.array(1.0)
 
-likelihood = parameterized_normal_log_density(
-    mean=lambda params, data: mean_function(params, data['x']),
-    std=lambda params, data: jnp.exp(params[2])
+def beta_mean(params):
+    return jnp.array(0.0)
+
+def beta_std(params):
+    return jnp.array(1.0)
+
+def sigma_rate(params):
+    return jnp.array(1.0)
+
+# Create nodes
+alpha_prior = create_prior_node(0, SingleParam(0), normal_prior(alpha_mean, alpha_std))
+beta_prior = create_prior_node(1, SingleParam(1), normal_prior(beta_mean, beta_std))
+sigma_prior = create_prior_node(2, SingleParam(2), exponential_prior(sigma_rate))
+likelihood = create_likelihood_node(
+    3,
+    ParamVector(),
+    normal_likelihood(
+        ParamFunction(lambda params, data: params[0] + params[1] * data['x'], ParamVector(0, 2)),
+        ParamFunction(lambda params, data: params, SingleParam(2))
+    )
 )
 
-# Create the initial Bayesian model (without data)
-model = BayesianModel((prior_alpha, prior_beta, prior_sigma, likelihood))
+# Create query plan and model
+query_plan = QueryPlan([alpha_prior, beta_prior, sigma_prior, likelihood])
+model = BayesianExecutionModel(query_plan)
 
 # Bind the data to the model
 data = {'x': x, 'y': y}
-bound_model = bind_data(model, data)
+bound_model = bind_data(3, data, query_plan)
 
 # Initialize the HMC sampler
 initial_params = jnp.array([0.0, 0.0, jnp.log(0.5)])
