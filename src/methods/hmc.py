@@ -5,27 +5,27 @@ from jaxtyping import Float, Bool, Array, PRNGKeyArray
 
 from logging_utils import hamiltonians_print, acceptance_print, step_output_print, \
     after_leapfrog_print, generated_momentum_print, step_input_print
-from methods.potential_energy import BayesianModel
 from base.data import JaxHMCData
+from methods.bayesian_execution_network import BayesianExecutionModel
 from util import conditional_jit
 
-StepFunc = Callable[[BayesianModel, JaxHMCData], JaxHMCData]
+StepFunc = Callable[[BayesianExecutionModel, JaxHMCData], JaxHMCData]
 
-def leapfrog_step(q: jnp.ndarray, p: jnp.ndarray, epsilon: float, U: BayesianModel) -> Tuple[jnp.ndarray, jnp.ndarray]:
+def leapfrog_step(q: jnp.ndarray, p: jnp.ndarray, epsilon: float, U: BayesianExecutionModel) -> Tuple[jnp.ndarray, jnp.ndarray]:
     """Perform a single leapfrog step."""
     p = p - epsilon * U.gradient(q) / 2  # Half step for momentum
     q = q + epsilon * p  # Full step for position
     p = p - epsilon * U.gradient(q) / 2  # Half step for momentum
     return q, p
 
-def leapfrog_integrate(q: jnp.ndarray, p: jnp.ndarray, epsilon: float, L: int, U: BayesianModel) -> Tuple[jnp.ndarray, jnp.ndarray]:
+def leapfrog_integrate(q: jnp.ndarray, p: jnp.ndarray, epsilon: float, L: int, U: BayesianExecutionModel) -> Tuple[jnp.ndarray, jnp.ndarray]:
     """Perform L steps of leapfrog integration."""
     def body_fun(i, carry):
         q, p = carry
         return leapfrog_step(q, p, epsilon, U)
     return lax.fori_loop(0, L, body_fun, (q, p))
 
-def compute_hamiltonian(q: jnp.ndarray, p: jnp.ndarray, U: BayesianModel) -> Float[Array, ""]:
+def compute_hamiltonian(q: jnp.ndarray, p: jnp.ndarray, U: BayesianExecutionModel) -> Float[Array, ""]:
     """Compute the Hamiltonian (total energy) of the system."""
     return U.potential_energy(q) + jnp.sum(p ** 2) / 2
 
@@ -38,7 +38,7 @@ def metropolis_accept(key: PRNGKeyArray, current_h: Float[Array, ""], proposed_h
     return accept, key
 
 @conditional_jit(use_jit=True)
-def step(U: BayesianModel, input: JaxHMCData) -> JaxHMCData:
+def step(U: BayesianExecutionModel, input: JaxHMCData) -> JaxHMCData:
     q = input.current_q
     key, subkey = random.split(input.key)
     p = random.normal(subkey, q.shape)
