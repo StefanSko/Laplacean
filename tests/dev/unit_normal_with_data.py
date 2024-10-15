@@ -5,7 +5,7 @@ from matplotlib import pyplot as plt
 
 from methods.bayesian_execution_network import (
     QueryPlan, create_prior_node, normal_prior, exponential_prior, BayesianExecutionModel, normal_likelihood,
-    create_likelihood_node
+    create_likelihood_node, bind_data
 )
 from methods.hmc import step
 from sampler.sampling import Sampler
@@ -35,8 +35,7 @@ sigma_prior = create_prior_node(1, exponential_prior(sigma_rate))
 likelihood = create_likelihood_node(2, normal_likelihood(likelihood_mean, likelihood_std))
 
 # Create query plan
-#query_plan = QueryPlan([mu_prior, sigma_prior, likelihood])
-query_plan = QueryPlan([mu_prior, sigma_prior])
+query_plan = QueryPlan([mu_prior, sigma_prior, likelihood])
 
 
 # Simulate data
@@ -47,7 +46,7 @@ data = random.normal(key, shape=(n_samples,)) * true_sigma + true_mu
 
 
 # Bind data to the likelihood node
-#query_plan = bind_data(2, data, query_plan)
+query_plan = bind_data(2, data, query_plan)
 
 # Create model
 model = BayesianExecutionModel(query_plan)
@@ -64,7 +63,7 @@ samples = sampler(step, input_data, model, num_warmup=n_warmup, num_samples=n_it
 
 
 mu_samples = samples[:, 0]
-sigma_samples = jnp.exp(samples[:, 1])  # Convert log(sigma) back to sigma
+sigma_samples = samples[:, 1]
 
 print(f"True mu: {true_mu}, Estimated mu: {jnp.mean(mu_samples):.4f}")
 print(f"True sigma: {true_sigma}, Estimated sigma: {jnp.mean(sigma_samples):.4f}")
