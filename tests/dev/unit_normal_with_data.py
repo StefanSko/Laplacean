@@ -5,7 +5,7 @@ from matplotlib import pyplot as plt
 
 from methods.bayesian_execution_network import (
     QueryPlan, create_prior_node, normal_prior, exponential_prior, BayesianExecutionModel, normal_likelihood,
-    create_likelihood_node, bind_data
+    create_likelihood_node, SingleParam, ParamVector, ParamFunction
 )
 from methods.hmc import step
 from sampler.sampling import Sampler
@@ -19,19 +19,20 @@ def mu_std(params):
     return jnp.array(1.0)
 
 def sigma_rate(params):
-    return jnp.array(1.0)  # rate parameter for exponential distribution
-
-def likelihood_mean(params, data):
-    return params[0]  # mu
-
-def likelihood_std(params, data):
-    return params[1]  # sigma (no need for exp now)
+    return jnp.array(1.0)
 
 
 # Create nodes
-mu_prior = create_prior_node(0, normal_prior(mu_mean, mu_std))
-sigma_prior = create_prior_node(1, exponential_prior(sigma_rate))
-likelihood = create_likelihood_node(2, normal_likelihood(likelihood_mean, likelihood_std))
+mu_prior = create_prior_node(0, SingleParam(0), normal_prior(mu_mean, mu_std))
+sigma_prior = create_prior_node(1, SingleParam(1), exponential_prior(sigma_rate))
+likelihood = create_likelihood_node(
+    2, 
+    ParamVector(),
+    normal_likelihood(
+        ParamFunction(lambda params, data: params, SingleParam(0)),
+        ParamFunction(lambda params, data: params, SingleParam(1))
+    )
+)
 
 # Create query plan
 query_plan = QueryPlan([mu_prior, sigma_prior, likelihood])
@@ -45,7 +46,7 @@ data = random.normal(key, shape=(n_samples,)) * true_sigma + true_mu
 
 
 # Bind data to the likelihood node
-query_plan = bind_data(2, data, query_plan)
+#query_plan = bind_data(2, data, query_plan)
 
 # Create model
 model = BayesianExecutionModel(query_plan)
