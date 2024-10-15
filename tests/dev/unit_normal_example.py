@@ -8,7 +8,7 @@ from methods.hmc import step
 from sampler.sampling import Sampler
 from base.data import JaxHMCData
 from methods.bayesian_execution_network import (
-    BayesianExecutionModel, create_prior_node, QueryPlan, normal_prior
+    BayesianExecutionModel, create_prior_node, QueryPlan, normal_prior, SingleParam
 )
 
 initial_q = jnp.array([1.])
@@ -25,7 +25,8 @@ def f_std(x):
 normal = normal_prior(f_mean, f_std)
 
 # Create a prior node
-prior_node = create_prior_node(0, normal)
+# Note: We now need to provide both a node_id and a ParamIndex
+prior_node = create_prior_node(0, SingleParam(0), normal)
 
 # Create a query plan
 query_plan = QueryPlan([prior_node])
