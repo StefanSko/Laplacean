@@ -38,6 +38,8 @@ def beta_std(params):
 def sigma_rate(params):
     return jnp.array(1.0)
 
+data = {'x': x, 'y': y}
+
 # Create nodes
 alpha_prior = create_prior_node(0, SingleParam(0), normal_prior(alpha_mean, alpha_std))
 beta_prior = create_prior_node(1, SingleParam(1), normal_prior(beta_mean, beta_std))
@@ -46,32 +48,34 @@ likelihood = create_likelihood_node(
     3,
     ParamVector(),
     normal_likelihood(
-        ParamFunction(lambda params, data: params[0] + params[1] * data['x'], ParamVector(0, 2)),
+        ParamFunction(lambda params, data: params[0] + params[1] * x, ParamVector(0, 2)),
         ParamFunction(lambda params, data: params, SingleParam(2))
     )
 )
 
 # Create query plan and model
 query_plan = QueryPlan([alpha_prior, beta_prior, sigma_prior, likelihood])
-model = BayesianExecutionModel(query_plan)
 
 # Bind the data to the model
-data = {'x': x, 'y': y}
-bound_model = bind_data(3, data, query_plan)
+
+#TODO: think about data here!!!
+query_plan = bind_data(3, y, query_plan)
+model = BayesianExecutionModel(query_plan)
+
 
 # Initialize the HMC sampler
-initial_params = jnp.array([0.0, 0.0, jnp.log(0.5)])
+initial_params = jnp.array([0.0, 0.0, 0.5])
 input_data = JaxHMCData(epsilon=0.005, L=12, current_q=initial_params, key=random.PRNGKey(1))
 
 # Create and run the sampler
 sampler = Sampler()
-samples = sampler(step, input_data, bound_model, num_warmup=1000, num_samples=4000)
+samples = sampler(step, input_data, model, num_warmup=500, num_samples=2000)
 
 # Compute the mean and standard deviation of the posterior distribution
 alpha_mean, beta_mean, log_sigma_mean = jnp.mean(samples, axis=0)
 alpha_std, beta_std, log_sigma_std = jnp.std(samples, axis=0)
-sigma_mean = jnp.exp(log_sigma_mean)
-sigma_std = jnp.exp(log_sigma_std)
+sigma_mean = log_sigma_mean
+sigma_std = log_sigma_std
 
 # Print the results
 print(f"alpha: {alpha_mean:.2f} +/- {alpha_std:.2f}")
@@ -91,7 +95,7 @@ plt.axvline(beta_true, color='r', linestyle='--', label='True value')
 plt.xlabel("beta")
 plt.legend()
 plt.subplot(133)
-sns.kdeplot(jnp.exp(samples[:, 2]), label="sigma")
+sns.kdeplot(samples[:, 2], label="sigma")
 plt.axvline(sigma_true, color='r', linestyle='--', label='True value')
 plt.xlabel("sigma")
 plt.legend()
