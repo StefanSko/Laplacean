@@ -51,6 +51,8 @@ class LikelihoodState(eqx.Module, Generic[U, V]):
         self.log_likelihood = log_likelihood
         self.data = BayesVar.just(data) if data is not None else BayesVar.empty()
 
+class IdentityParam(NamedTuple):
+    pass
 
 class SingleParam(NamedTuple):
     index: int
@@ -63,7 +65,7 @@ class ParamMatrix(NamedTuple):
     row: int | ParamVector = ParamVector()
     col: int | ParamVector = ParamVector()
 
-ParamIndex = SingleParam | ParamVector | ParamMatrix
+ParamIndex = IdentityParam | SingleParam | ParamVector | ParamMatrix
 
 class PriorNode(Generic[U], eqx.Module):
     node_id: int
@@ -150,6 +152,8 @@ def normal_likelihood(
 
 def _select_params(params: U, index: ParamIndex) -> U:
     match index:
+        case IdentityParam():
+            return cast(U,params)
         case SingleParam(i):
             return cast(U, params[i])
         case ParamVector(start, end):
