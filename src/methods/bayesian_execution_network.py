@@ -179,15 +179,6 @@ def create_likelihood_node(node_id: int, param_index: ParamIndex, log_likelihood
 def create_sub_model_node(node_id: int, sub_model: QueryPlan[U, V]) -> SubModelNode[U, V]:
     return SubModelNode(node_id, sub_model)
 
-def evaluate_node(node: PriorNode[U] | LikelihoodNode[U, V] | SubModelNode[U, V], params: U) -> LogDensity:
-    if isinstance(node, PriorNode):
-        return node.evaluate(params)
-    elif isinstance(node, LikelihoodNode):
-        return node.evaluate(params)
-    elif isinstance(node, SubModelNode):
-        return execute_query_plan(node.sub_model, params)
-    return jnp.array(0.0)
-
 def execute_query_plan(query_plan: QueryPlan[U, V], params: U) -> LogDensity:
     return jnp.sum(jnp.array([node.evaluate(params) for node in query_plan.nodes]))
 
