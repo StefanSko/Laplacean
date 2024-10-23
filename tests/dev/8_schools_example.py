@@ -20,7 +20,7 @@ mu = create_prior_node(0, SingleParam(0), normal_prior(
 tau =  create_prior_node(1, SingleParam(1), exponential_prior(
     lambda _: jnp.array(1.0)))
 theta_i = create_prior_node(
-        node_id=3,
+        node_id=2,
         param_index=ParamVector(start=2, end=2+num_schools),
         log_density=normal_prior(
             mean=lambda params: params[0],  # μ
@@ -58,7 +58,8 @@ sampler = Sampler()
 samples = sampler(step, input_data, model, num_warmup=3, num_samples=5)
 
 #TODO FIX
-#jax.debug.print(mean) -> [0. 0. 0. 0. 0. 0. 0. 0.]
-#jax.debug.print(std) -> [15 10 16 11  9 11 10 18]
-#jax.debug.print(mean) -> [nan nan nan nan nan nan nan nan]
-#jax.debug.print(std) -> [15 10 16 11  9 11 10 18]
+#node_id -> 0; logpdf -> -0.0
+#node_id -> 1; logpdf -> -0.0
+#node_id -> 2; logpdf -> nan Indexing seems to be off and might need rethink FIXME!!! 
+#node_id -> 4; logpdf -> -31.45551109313965
+#node_id -> 0; logpdf -> -4.237136153051324e-08
