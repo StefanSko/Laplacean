@@ -17,6 +17,7 @@ U = TypeVar('U', bound=Parameter)
 V = TypeVar('V', bound=Data)
 T = TypeVar('T', bound=Variable)
 
+
 @dataclass(frozen=True)
 class ParamIndex:
     """Unified parameter indexing"""
@@ -34,6 +35,7 @@ class ParamIndex:
         if len(self.indices) == 1:
             return cast(U, params[self.indices[0]])
         return cast(U, params[self.indices])
+
 
 class BayesVar(eqx.Module, Generic[T]):
     """Represents a value that may or may not be present"""
@@ -61,6 +63,7 @@ class BayesVar(eqx.Module, Generic[T]):
     def just(cls, value: T) -> 'BayesVar[T]':
         return cls(value)
 
+
 @dataclass
 class DataSpec:
     """Specification for data variables"""
@@ -76,6 +79,7 @@ class DataSpec:
     def scalar(cls, name: str) -> 'DataSpec':
         return cls(name, ())
 
+
 @dataclass
 class ParameterSpec:
     """Specification for parameter variables"""
@@ -90,6 +94,7 @@ class ParameterSpec:
     @classmethod
     def scalar(cls, name: str, idx: int) -> 'ParameterSpec':
         return cls(name, (), ParamIndex.single(idx))
+
 
 class Distribution(Generic[U, V]):
     """Represents a probability distribution with log probability function"""
@@ -122,6 +127,7 @@ class Distribution(Generic[U, V]):
             )
         )
 
+
 class BayesNode(eqx.Module, Generic[U, V]):
     """Unified node structure for both prior and likelihood nodes"""
     node_id: int
@@ -146,6 +152,7 @@ class BayesNode(eqx.Module, Generic[U, V]):
         log_pdf = self.log_density(selected_params, self.data)
         jax.debug.print("node_id -> {}; logpdf -> {}", self.node_id, log_pdf)
         return log_pdf
+
 
 class Model(eqx.Module, Generic[U, V]):
     """Main model class"""
@@ -180,9 +187,10 @@ class Model(eqx.Module, Generic[U, V]):
             if spec.index.indices[0].stop is not None
         )
 
+
 class ModelBuilder(Generic[U, V]):
     """Stan-like model builder"""
-    def __init__(self):
+    def __init__(self) -> None:
         self.data_vars: dict[str, DataSpec] = {}
         self.param_vars: dict[str, ParameterSpec] = {}
         self.nodes: list[BayesNode[U, V]] = []
@@ -203,6 +211,7 @@ class ModelBuilder(Generic[U, V]):
     def build(self) -> Model[U, V]:
         return Model(self.nodes, self.data_vars, self.param_vars)
 
+
 class DataBlockBuilder(Generic[U, V]):
     """Builder for data block"""
     def __init__(self, model_builder: ModelBuilder[U, V]):
@@ -221,6 +230,7 @@ class DataBlockBuilder(Generic[U, V]):
     def done(self) -> ModelBuilder[U, V]:
         return self.model_builder
 
+
 class ParameterBlockBuilder(Generic[U, V]):
     """Builder for parameter block"""
     def __init__(self, model_builder: ModelBuilder[U, V]):
@@ -237,11 +247,12 @@ class ParameterBlockBuilder(Generic[U, V]):
             size = self.model_builder.data_vars[size].value.get()
         spec = ParameterSpec.vector(name, cast(int, size), self.model_builder._current_param_idx)
         self.model_builder.param_vars[name] = spec
-        self.model_builder._current_param_idx += size
+        self.model_builder._current_param_idx += cast(int, size)
         return self
     
     def done(self) -> ModelBuilder[U, V]:
         return self.model_builder
+
 
 class ModelBlockBuilder(Generic[U, V]):
     """Builder for model block"""
@@ -256,7 +267,7 @@ class ModelBlockBuilder(Generic[U, V]):
                 return lambda _: jnp.array(v)
             return lambda p: p[self.model_builder.param_vars[v].index.select(p)]
         
-        distribution = Distribution.normal_likelihood(
+        distribution: Distribution[U, V] = Distribution.normal_likelihood(
             mean_fn=get_value(mean),
             std_fn=get_value(std)
         )
@@ -272,11 +283,13 @@ class ModelBlockBuilder(Generic[U, V]):
     def done(self) -> ModelBuilder[U, V]:
         return self.model_builder
 
+
 # Utility functions for working with models
 def get_initial_params(model: Model[U, V], random_key: Array) -> U:
     """Generate initial parameters for the model"""
     size = model.get_param_size()
     return cast(U, jax.random.normal(random_key, (size,)))
+
 
 def validate_data(model: Model[U, V], data_dict: dict[str, Array]) -> None:
     """Validate that provided data matches model specifications"""
