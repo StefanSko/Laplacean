@@ -79,7 +79,9 @@ class PriorNode(Generic[U], eqx.Module):
 
     def evaluate(self, params: U) -> LogDensity:
         selected_params = _select_params(params, self.param_index)
-        return self.log_density(selected_params)
+        log_pdf = self.log_density(selected_params)
+        jax.debug.print("node_id -> {}; logpdf -> {}", self.node_id, log_pdf)
+        return log_pdf
 
 class LikelihoodNode(Generic[U, V], eqx.Module):
     node_id: int
@@ -93,7 +95,10 @@ class LikelihoodNode(Generic[U, V], eqx.Module):
 
     def evaluate(self, params: U) -> LogDensity:
         selected_params = _select_params(params, self.param_index)
-        return self.state.data.map(lambda d: self.state.log_likelihood(selected_params, d))
+        log_pdf = self.state.data.map(lambda d: self.state.log_likelihood(selected_params, d))
+        jax.debug.print("node_id -> {}; logpdf -> {}", self.node_id, log_pdf)
+        return log_pdf
+
 
 
     @classmethod
@@ -121,10 +126,13 @@ class QueryPlan(Generic[U, V]):
 
 def normal_prior(
     mean: Callable[[U], Array],
-    std: Callable[[U], Array]
+    std: Callable[[U], Array],
+    index: ParamIndex = IdentityParam()
 ) -> Callable[[U], LogDensity]:
     def log_prob(params: U) -> LogDensity:
-        return jnp.sum(-0.5 * ((params - mean(params)) / std(params)) ** 2)
+        selected_params_mean = _select_params(params, index)
+        selected_params_std = _select_params(params, index)
+        return jnp.sum(-0.5 * ((params - mean(selected_params_mean)) / std(selected_params_std)) ** 2)
     return log_prob
 
 def exponential_prior(
@@ -208,3 +216,86 @@ class BayesianExecutionModel(eqx.Module, Generic[U, V]):
 
     def gradient(self, params: U) -> Array:
         return jax.grad(self.potential_energy)(params)
+
+
+class Model(eqx.Module, Generic[U, V]):
+    query_plan: QueryPlan[U, V]
+    data: V
+    params: U
+    
+    def __init__(self, query_plan: QueryPlan[U, V], params: U, data: BayesVar[V]):
+        self.query_plan = query_plan
+        self.params = params
+        self.data = data
+    
+    def log_prob(self) -> LogDensity:
+        """Evaluates the total log probability of the model."""
+        return execute_query_plan(self.query_plan, self.params)
+    
+    def potential_energy(self) -> LogDensity:
+        """Returns the potential energy (negative log probability)."""
+        return -self.log_prob()
+    
+    def gradient(self) -> Array:
+        """Returns the gradient of the potential energy with respect to parameters."""
+        return jax.grad(lambda p: -execute_query_plan(self.query_plan, p))(self.params)
+    
+    @classmethod
+    def builder(cls):
+        """Returns a ModelBuilder to construct models in a more Stan-like way."""
+        return ModelBuilder()
+
+class ModelBuilder(Generic[U, V]):
+    def __init__(self) -> None:
+        self.nodes: list[NodeType] = []
+        self._current_node_id: int = 0
+    
+    def add_prior(self, name: str, distribution: str, *args: Any, **kwargs: Any) -> 'ModelBuilder':
+        """Adds a prior to the model in a Stan-like way.
+        Example: builder.add_prior('mu', 'normal', 0, 10)
+        """
+        param_index = kwargs.pop('param_index', IdentityParam())
+        
+        if distribution == 'normal':
+            mean, std = args
+            log_density = normal_prior(
+                lambda _: jnp.array(mean),
+                lambda _: jnp.array(std),
+                param_index
+            )
+        elif distribution == 'exponential':
+            rate = args[0]
+            log_density = exponential_prior(lambda _: jnp.array(rate))
+        else:
+            raise ValueError(f"Unsupported distribution: {distribution}")
+            
+        node: PriorNode[U] = create_prior_node(self._current_node_id, param_index, log_density)
+        self.nodes.append(node)
+        self._current_node_id += 1
+        return self
+    
+    def add_likelihood(self, name: str, distribution: str, 
+                      mean_fn: ParamFunction, std_fn: ParamFunction) -> 'ModelBuilder':
+        """Adds a likelihood to the model.
+        Example: builder.add_likelihood('y', 'normal', mean_fn, std_fn)
+        """
+        if distribution == 'normal':
+            log_likelihood = normal_likelihood(mean_fn, std_fn)
+        else:
+            raise ValueError(f"Unsupported distribution: {distribution}")
+            
+        node: LikelihoodNode[U, V] = create_likelihood_node(self._current_node_id, 
+                                    mean_fn.param_index, 
+                                    log_likelihood)
+        self.nodes.append(node)
+        self._current_node_id += 1
+        return self
+    
+    def build(self, params: U, data: BayesVar[V]) -> Model[U, V]:
+        """Builds the final model with the specified parameters and data."""
+        query_plan: QueryPlan[U, V] = QueryPlan(self.nodes)
+        return Model(query_plan, params, data)
+    
+
+    
+    
