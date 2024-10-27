@@ -102,30 +102,36 @@ class Distribution(Generic[U, V]):
         self.log_prob = log_prob
     
     @staticmethod
-    def normal(mean: float, std: float) -> 'Distribution[U, V]':
+    def normal(
+        mean: Callable[[U], Array] | float,
+        std: Callable[[U], Array] | float
+    ) -> 'Distribution[U, V]':
+        """Create a normal distribution that works for both priors and likelihoods"""
+        # Convert constants to callables for unified handling
+        mean_fn = mean if callable(mean) else (lambda _: jnp.array(mean))
+        std_fn = std if callable(std) else (lambda _: jnp.array(std))
+        
         return Distribution(
-            lambda x, _: jnp.sum(norm.logpdf(x, mean, std))
+            lambda params, data: data.map(
+                lambda d: jnp.sum(norm.logpdf(d, mean_fn(params), std_fn(params)))
+            ) if not data.map(jnp.any) else jnp.sum(norm.logpdf(params, mean_fn(params), std_fn(params)))
         )
     
     @staticmethod
-    def exponential(rate: float) -> 'Distribution[U, V]':
+    def exponential(
+        rate: Callable[[U], Array] | float
+    ) -> 'Distribution[U, V]':
+        """Create an exponential distribution that works for both priors and likelihoods"""
+        rate_fn = rate if callable(rate) else (lambda _: jnp.array(rate))
+        
         return Distribution(
-            lambda x, _: jnp.sum(expon.logpdf(x, scale=1/rate))
+            lambda params, data: data.map(
+                lambda d: jnp.sum(expon.logpdf(d, scale=1/rate_fn(params)))
+            ) if not data.map(jnp.any) else jnp.sum(expon.logpdf(params, scale=1/rate_fn(params)))
         )
     
     def map(self, f: Callable[[U], U]) -> 'Distribution[U, V]':
         return Distribution(lambda x, d: self.log_prob(f(x), d))
-    
-    @staticmethod
-    def normal_likelihood(
-        mean_fn: Callable[[U], Array],
-        std_fn: Callable[[U], Array]
-    ) -> 'Distribution[U, V]':
-        return Distribution(
-            lambda params, data: data.map(
-                lambda d: jnp.sum(norm.logpdf(d, mean_fn(params), std_fn(params)))
-            )
-        )
 
 
 class BayesNode(eqx.Module, Generic[U, V]):
@@ -259,26 +265,87 @@ class ModelBlockBuilder(Generic[U, V]):
     def __init__(self, model_builder: ModelBuilder[U, V]):
         self.model_builder = model_builder
     
-    def normal(self, target: str, mean: float | str, std: float | str) -> 'ModelBlockBuilder[U, V]':
-        param_spec = self.model_builder.param_vars[target]
-        
-        def get_value(v: float | str) -> Callable[[U], Array]:
-            if isinstance(v, (int, float)):
-                return lambda _: jnp.array(v)
+    def _get_value_fn(self, v: float | str) -> Callable[[U], Array]:
+        """Convert a value or parameter name into a function"""
+        if isinstance(v, (int, float)):
+            return lambda _: jnp.array(v)
+        # Check if it's a parameter reference
+        if v in self.model_builder.param_vars:
             return lambda p: p[self.model_builder.param_vars[v].index.select(p)]
+        # Check if it's a data reference
+        if v in self.model_builder.data_vars:
+            return lambda _: self.model_builder.data_vars[v].value.get()
+        raise ValueError(f"Unknown reference: {v}")
+    
+    def _add_distribution(
+        self, 
+        target: str, 
+        dist_type: str,
+        params: dict[str, float | str]
+    ) -> 'ModelBlockBuilder[U, V]':
+        """Generic method to add any distribution"""
+        # Get target specification (could be either parameter or data)
+        if target in self.model_builder.param_vars:
+            target_spec = self.model_builder.param_vars[target]
+            param_index = target_spec.index
+        elif target in self.model_builder.data_vars:
+            target_spec = self.model_builder.data_vars[target]
+            # For data targets, we need to create an appropriate index
+            param_index = ParamIndex.vector(0, target_spec.shape[0]) if len(target_spec.shape) > 0 else ParamIndex.single(0)
+        else:
+            raise ValueError(f"Unknown target: {target}")
+
+        # Convert all parameter references to functions
+        param_fns = {
+            name: self._get_value_fn(value) 
+            for name, value in params.items()
+        }
         
-        distribution: Distribution[U, V] = Distribution.normal_likelihood(
-            mean_fn=get_value(mean),
-            std_fn=get_value(std)
-        )
+        # Create the appropriate distribution
+        if dist_type == "normal":
+            distribution = Distribution.normal(
+                mean=param_fns["mean"],
+                std=param_fns["std"]
+            )
+        elif dist_type == "exponential":
+            distribution = Distribution.exponential(
+                rate=param_fns["rate"]
+            )
+        else:
+            raise ValueError(f"Unsupported distribution: {dist_type}")
         
         node = BayesNode(
             node_id=len(self.model_builder.nodes),
-            param_index=param_spec.index,
+            param_index=param_index,
             log_density=distribution.log_prob
         )
         self.model_builder.nodes.append(node)
         return self
+    
+    def normal(
+        self, 
+        target: str, 
+        mean: float | str, 
+        std: float | str
+    ) -> 'ModelBlockBuilder[U, V]':
+        """Add normal distribution"""
+        return self._add_distribution(
+            target=target,
+            dist_type="normal",
+            params={"mean": mean, "std": std}
+        )
+    
+    def exponential(
+        self, 
+        target: str, 
+        rate: float | str
+    ) -> 'ModelBlockBuilder[U, V]':
+        """Add exponential distribution"""
+        return self._add_distribution(
+            target=target,
+            dist_type="exponential",
+            params={"rate": rate}
+        )
     
     def done(self) -> ModelBuilder[U, V]:
         return self.model_builder
@@ -301,3 +368,57 @@ def validate_data(model: Model[U, V], data_dict: dict[str, Array]) -> None:
             raise ValueError(
                 f"Shape mismatch for {name}: expected {spec.shape}, got {data.shape}"
             )
+
+
+def bind_data(model: Model[U, V], data_dict: dict[str, Array]) -> Model[U, V]:
+    """Bind data to model variables.
+    
+    Args:
+        model: The model to bind data to
+        data_dict: Dictionary mapping variable names to their values
+        
+    Returns:
+        A new model with the data bound to it
+    """
+    # Validate data first
+    validate_data(model, data_dict)
+    
+    # Update data specifications
+    new_data_vars = {}
+    for name, spec in model.data_vars.items():
+        if name in data_dict:
+            new_spec = DataSpec(
+                name=spec.name,
+                shape=spec.shape,
+                value=BayesVar.just(data_dict[name])
+            )
+            new_data_vars[name] = new_spec
+        else:
+            new_data_vars[name] = spec
+    
+    # Create mapping from node_id to data
+    node_data_map: dict[int, Array] = {}
+    for node in model.nodes:
+        # Check if this node is a likelihood node (has data dependency)
+        for name, data in data_dict.items():
+            if name in model.data_vars:
+                # If the node's parameter index matches any data variable's shape,
+                # assume it's the corresponding likelihood node
+                if (isinstance(node.param_index.indices[0].stop, int) and 
+                    node.param_index.indices[0].stop - node.param_index.indices[0].start == data.shape[0]):
+                    node_data_map[node.node_id] = data
+    
+    # Create new nodes with bound data
+    new_nodes = [
+        BayesNode(
+            node_id=node.node_id,
+            param_index=node.param_index,
+            log_density=node.log_density,
+            data=node_data_map.get(node.node_id)
+        )
+        for node in model.nodes
+    ]
+    
+    return Model(new_nodes, new_data_vars, model.param_vars)
+
+
