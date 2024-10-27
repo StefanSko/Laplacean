@@ -17,7 +17,7 @@ U = TypeVar('U', bound=Parameter)
 V = TypeVar('V', bound=Data)
 T = TypeVar('T', bound=Variable)
 
-
+#TODO: Make jit'able
 @dataclass(frozen=True)
 class ParamIndex:
     """Unified parameter indexing"""
@@ -63,6 +63,10 @@ class BayesVar(eqx.Module, Generic[T]):
     def just(cls, value: T) -> 'BayesVar[T]':
         return cls(value)
 
+    def is_empty(self) -> bool:
+        """Returns True if the variable is empty (contains NaN)"""
+        return jnp.any(jnp.isnan(self.value))
+
 
 @dataclass
 class DataSpec:
@@ -72,12 +76,18 @@ class DataSpec:
     value: BayesVar[Array] = BayesVar.empty()
 
     @classmethod
-    def vector(cls, name: str, size: int) -> 'DataSpec':
-        return cls(name, (size,))
+    def vector(cls, name: str, size: int, value: Array | None | BayesVar[Array] = None) -> 'DataSpec':
+        wrapped_value = (BayesVar.just(value) if isinstance(value, Array) 
+                        else value if isinstance(value, BayesVar) 
+                        else BayesVar.empty())
+        return cls(name, (size,), wrapped_value)
     
     @classmethod
-    def scalar(cls, name: str) -> 'DataSpec':
-        return cls(name, ())
+    def scalar(cls, name: str, value: Array | None | BayesVar[Array] = None) -> 'DataSpec':
+        wrapped_value = (BayesVar.just(value) if isinstance(value, Array)
+                        else value if isinstance(value, BayesVar)
+                        else BayesVar.empty())
+        return cls(name, (), wrapped_value)
 
 
 @dataclass
@@ -136,19 +146,19 @@ class Distribution(Generic[U, V]):
 
 class BayesNode(eqx.Module, Generic[U, V]):
     """Unified node structure for both prior and likelihood nodes"""
-    node_id: int
+    target_name: str
     param_index: ParamIndex
     log_density: Callable[[U, BayesVar[V]], LogDensity]
     data: BayesVar[V]
 
     def __init__(
         self, 
-        node_id: int,
+        target_name: str,
         param_index: ParamIndex,
         log_density: Callable[[U, BayesVar[V]], LogDensity],
         data: V | None = None
     ):
-        self.node_id = node_id
+        self.target_name = target_name
         self.param_index = param_index
         self.log_density = log_density
         self.data = BayesVar.just(data) if data is not None else BayesVar.empty()
@@ -156,7 +166,7 @@ class BayesNode(eqx.Module, Generic[U, V]):
     def evaluate(self, params: U) -> LogDensity:
         selected_params = self.param_index.select(params)
         log_pdf = self.log_density(selected_params, self.data)
-        jax.debug.print("node_id -> {}; logpdf -> {}", self.node_id, log_pdf)
+        jax.debug.print("{} -> {}", self.target_name, log_pdf)  # Updated debug print
         return log_pdf
 
 
@@ -224,14 +234,15 @@ class DataBlockBuilder(Generic[U, V]):
     def __init__(self, model_builder: ModelBuilder[U, V]):
         self.model_builder = model_builder
     
-    def int_scalar(self, name: str) -> 'DataBlockBuilder[U, V]':
-        self.model_builder.data_vars[name] = DataSpec.scalar(name)
+    def int_scalar(self, name: str, value: Array | None = None) -> 'DataBlockBuilder[U, V]':
+        """Define a scalar integer variable, optionally with an immediate value."""
+        self.model_builder.data_vars[name] = DataSpec.scalar(name, value)
         return self
     
-    def vector(self, name: str, size: str | int) -> 'DataBlockBuilder[U, V]':
+    def vector(self, name: str, size: str | Array) -> 'DataBlockBuilder[U, V]':
         if isinstance(size, str):
             size = self.model_builder.data_vars[size].value.get()
-        self.model_builder.data_vars[name] = DataSpec.vector(name, cast(int, size))
+        self.model_builder.data_vars[name] = DataSpec.vector(name, int(size))
         return self
     
     def done(self) -> ModelBuilder[U, V]:
@@ -316,7 +327,7 @@ class ModelBlockBuilder(Generic[U, V]):
             raise ValueError(f"Unsupported distribution: {dist_type}")
         
         node = BayesNode(
-            node_id=len(self.model_builder.nodes),
+            target_name=target,
             param_index=param_index,
             log_density=distribution.log_prob
         )
@@ -362,13 +373,15 @@ def get_initial_params(model: Model[U, V], random_key: Array) -> U:
 def validate_data(model: Model[U, V], data_dict: dict[str, Array]) -> None:
     """Validate that provided data matches model specifications"""
     for name, spec in model.data_vars.items():
-        if name not in data_dict:
-            raise ValueError(f"Missing data for variable: {name}")
-        data = data_dict[name]
-        if data.shape != spec.shape:
-            raise ValueError(
-                f"Shape mismatch for {name}: expected {spec.shape}, got {data.shape}"
-            )
+        # Skip if data is already bound
+        if spec.value.is_empty():
+            if name not in data_dict:
+                raise ValueError(f"Missing data for variable: {name}")
+            data = data_dict[name]
+            if data.shape != spec.shape:
+                raise ValueError(
+                    f"Shape mismatch for {name}: expected {spec.shape}, got {data.shape}"
+                )
 
 
 def bind_data(model: Model[U, V], data_dict: dict[str, Array]) -> Model[U, V]:
@@ -397,29 +410,23 @@ def bind_data(model: Model[U, V], data_dict: dict[str, Array]) -> Model[U, V]:
         else:
             new_data_vars[name] = spec
     
-    # Create mapping from node_id to data
-    node_data_map: dict[int, Array] = {}
-    for node in model.nodes:
-        # Check if this node is a likelihood node (has data dependency)
-        for name, data in data_dict.items():
-            if name in model.data_vars:
-                # If the node's parameter index matches any data variable's shape,
-                # assume it's the corresponding likelihood node
-                if (isinstance(node.param_index.indices[0].stop, int) and 
-                    node.param_index.indices[0].stop - node.param_index.indices[0].start == data.shape[0]):
-                    node_data_map[node.node_id] = data
-    
     # Create new nodes with bound data
     new_nodes = [
         BayesNode(
-            node_id=node.node_id,
+            target_name=node.target_name,
             param_index=node.param_index,
             log_density=node.log_density,
-            data=node_data_map.get(node.node_id)
+            data=data_dict.get(node.target_name)  # Use target_name to look up data
         )
         for node in model.nodes
     ]
     
     return Model(new_nodes, new_data_vars, model.param_vars)
+
+
+
+
+
+
 
 

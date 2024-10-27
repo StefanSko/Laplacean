@@ -15,7 +15,7 @@ sigma = jnp.array([15, 10, 16, 11, 9, 11, 10, 18])  # standard deviations
 # Create model using Stan-like interface
 model = (ModelBuilder()
          .data()
-         .int_scalar("J")
+         .int_scalar("J", J)
          .vector("y", "J")
          .vector("sigma", "J")
          .done()
@@ -36,7 +36,6 @@ model = (ModelBuilder()
 
 # Bind data to model
 model = bind_data(model, {
-    "J": J,
     "y": y,
     "sigma": sigma
 })
