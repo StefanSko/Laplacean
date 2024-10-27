@@ -197,6 +197,7 @@ class Model(eqx.Module, Generic[U, V]):
 class ModelBuilder(Generic[U, V]):
     """Stan-like model builder"""
     def __init__(self) -> None:
+        #TODO: FIX data vars spec
         self.data_vars: dict[str, DataSpec] = {}
         self.param_vars: dict[str, ParameterSpec] = {}
         self.nodes: list[BayesNode[U, V]] = []
