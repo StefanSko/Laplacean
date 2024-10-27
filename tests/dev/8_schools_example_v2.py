@@ -8,7 +8,7 @@ from methods.hmc import step
 from sampler.sampling import Sampler
 
 # Data for the 8 schools problem
-J = 8  # number of schools
+J = jnp.array(8)  # number of schools
 y = jnp.array([28, 8, -3, 7, -1, 1, 18, 12])  # observed effects
 sigma = jnp.array([15, 10, 16, 11, 9, 11, 10, 18])  # standard deviations
 
