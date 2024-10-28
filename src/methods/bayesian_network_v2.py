@@ -1,7 +1,7 @@
-from dataclasses import dataclass
 from typing import Callable, Generic, TypeVar, Any, cast
 import equinox as eqx
 import jax
+import jax_dataclasses as jdc
 import jax.numpy as jnp
 from jaxtyping import Array, Float
 from jax.scipy.stats import norm, expon
@@ -17,8 +17,7 @@ U = TypeVar('U', bound=Parameter)
 V = TypeVar('V', bound=Data)
 T = TypeVar('T', bound=Variable)
 
-#TODO: Make jit'able
-@dataclass(frozen=True)
+@jdc.pytree_dataclass
 class ParamIndex:
     """Unified parameter indexing"""
     indices: tuple[slice, ...] = (slice(None),)
@@ -68,7 +67,7 @@ class BayesVar(eqx.Module, Generic[T]):
         return jnp.any(jnp.isnan(self.value))
 
 
-@dataclass
+@jdc.pytree_dataclass
 class DataSpec:
     """Specification for data variables"""
     name: str
@@ -90,7 +89,7 @@ class DataSpec:
         return cls(name, (), wrapped_value)
 
 
-@dataclass
+@jdc.pytree_dataclass
 class ParameterSpec:
     """Specification for parameter variables"""
     name: str
