@@ -17,9 +17,8 @@ model = (ModelBuilder()
          .done()
          .model()
          # Single standard normal prior
-         .normal("x", mean=0.0, std=1.0)
-         .done()
-         .build())
+         .normal("x", 0, 1)
+         .done())
 
 # Initialize HMC sampler
 initial_params = get_initial_params(model, random_key=random.PRNGKey(0))
