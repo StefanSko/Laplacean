@@ -1,5 +1,4 @@
-from typing import Callable, Generic, TypeVar, Union, Optional
-import equinox as eqx
+from typing import Callable, Generic, TypeVar, Union
 import jax_dataclasses as jdc
 import jax.numpy as jnp
 from jaxtyping import Array, Float
@@ -28,12 +27,18 @@ class ParamIndex:
             return params[self.indices[0]]
         return params[self.indices]
 
-class RandomVariable(eqx.Module, Generic[RandomVar]):
+class RandomVariable(Generic[RandomVar]):
     """Unified representation of random variables (both parameters and data)"""
     name: str
     shape: tuple[int, ...]
-    observed_values: Optional[Array] = None
-    param_index: Optional[ParamIndex] = None
+    observed_values: Array | None = None
+    param_index: ParamIndex | None = None
+    
+    def __init__(self, name: str, shape: tuple[int, ...], observed_values: Array | None, param_index: ParamIndex | None) -> None:
+        self.name = name
+        self.shape = shape
+        self.observed_values = observed_values
+        self.param_index = param_index
 
     def get_value(self, params: Array) -> Array:
         """Get current value, combining observed and parameter values"""
@@ -59,9 +64,12 @@ class RandomVariable(eqx.Module, Generic[RandomVar]):
         return (self.observed_values is not None and 
                 jnp.any(jnp.isnan(self.observed_values)))
 
-class Distribution(eqx.Module, Generic[RandomVar]):
+class Distribution(Generic[RandomVar]):
     """Probability distribution over random variables"""
     log_prob: Callable[[RandomVariable[RandomVar], Array], LogDensity]
+    
+    def __init__(self, log_prob: Callable[[RandomVariable[RandomVar], Array], LogDensity]):
+        self.log_prob = log_prob
 
     @staticmethod
     def normal(
@@ -84,19 +92,28 @@ class Distribution(eqx.Module, Generic[RandomVar]):
             return jnp.sum(expon.logpdf(value, scale=1/rate))
         return Distribution(log_prob)
 
-class Edge(eqx.Module, Generic[RandomVar]):
+class Edge(Generic[RandomVar]):
     """Probabilistic relationship between variables"""
     child: RandomVariable[RandomVar]
     distribution: Distribution[RandomVar]
+    
+    def __init__(self, child: RandomVariable[RandomVar], distribution: Distribution[RandomVar]):
+        self.child = child
+        self.distribution = distribution
 
     def log_prob(self, params: Array) -> LogDensity:
         return self.distribution.log_prob(self.child, params)
 
-class BayesianNetwork(eqx.Module, Generic[RandomVar]):
+class BayesianNetwork(Generic[RandomVar]):
     """Complete probabilistic graphical model"""
     variables: dict[str, RandomVariable[RandomVar]]
     edges: list[Edge[RandomVar]]
     param_size: int
+    
+    def __init__(self, variables: dict, edges: list[Edge[RandomVar]], param_size: int):
+        self.variables = variables
+        self.edges = edges
+        self.param_size = param_size
 
     def log_prob(self, params: Array) -> LogDensity:
         """Compute total log probability of model"""
@@ -115,11 +132,17 @@ class BayesianNetwork(eqx.Module, Generic[RandomVar]):
 
 class ModelBuilder:
     """Stan-like model builder interface"""
+    
+    variables: dict[str, RandomVariable]
+    edges: list[Edge[RandomVar]]
+    _size_vars: dict[str, int]
+    _current_param_idx: int
+    
     def __init__(self):
-        self.variables: dict[str, RandomVariable[RandomVar]] = {}
-        self.edges: list[Edge[RandomVar]] = []
-        self._size_vars: dict[str, int] = {}
-        self._current_param_idx: int = 0
+        self.variables = {}
+        self.edges = []
+        self._size_vars = {}
+        self._current_param_idx = 0
 
     def data(self) -> 'DataBlockBuilder':
         return DataBlockBuilder(self)
