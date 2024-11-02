@@ -323,7 +323,7 @@ def bind_data(
         edges=model.edges,
         param_size=model.param_size
     )
-
+#TODO: FIXME!!
 def get_initial_params(
     model: BayesianNetwork[RandomVar],
     random_key: jax.random.PRNGKey,
