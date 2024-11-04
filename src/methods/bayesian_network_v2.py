@@ -96,13 +96,18 @@ class Edge(Generic[RandomVar]):
     """Probabilistic relationship between variables"""
     child: RandomVariable[RandomVar]
     distribution: Distribution[RandomVar]
+    name: str
     
-    def __init__(self, child: RandomVariable[RandomVar], distribution: Distribution[RandomVar]):
+    def __init__(self, child: RandomVariable[RandomVar], distribution: Distribution[RandomVar], name: str = "unnamed_edge"):
         self.child = child
         self.distribution = distribution
+        self.name = name
 
     def log_prob(self, params: Array) -> LogDensity:
         return self.distribution.log_prob(self.child, params)
+        
+    def __repr__(self) -> str:
+        return f"Edge({self.name})"
 
 class BayesianNetwork(Generic[RandomVar]):
     """Complete probabilistic graphical model"""
@@ -181,17 +186,17 @@ class DataBlockBuilder:
         vector_size = self.model_builder._size_vars[size]
         # Initially no observed values - will be bound later
         # But we allocate parameter space for potential missing values
-        param_index = ParamIndex.vector(
-            self.model_builder._current_param_idx,
-            self.model_builder._current_param_idx + vector_size
-        )
-        self.model_builder._current_param_idx += vector_size
+        #param_index = ParamIndex.vector(
+        #    self.model_builder._current_param_idx,
+        #    self.model_builder._current_param_idx + vector_size
+        #)
+        #self.model_builder._current_param_idx += vector_size
         
         self.model_builder.variables[name] = RandomVariable(
             name=name,
             shape=(vector_size,),
             observed_values=None,  # Will be set when data is bound
-            param_index=param_index  # For potential missing values
+            param_index=None  # For potential missing values
         )
         return self
     
@@ -274,7 +279,8 @@ class ModelBlockBuilder:
         
         self.model_builder.edges.append(Edge(
             child=target_var,
-            distribution=Distribution.normal(loc_var, scale_var)
+            distribution=Distribution.normal(loc_var, scale_var),
+            name=f"normal_{target}"
         ))
         return self
     
@@ -288,7 +294,8 @@ class ModelBlockBuilder:
         
         self.model_builder.edges.append(Edge(
             child=target_var,
-            distribution=Distribution.exponential(rate)
+            distribution=Distribution.exponential(rate),
+            name = f"exponential_{target}"
         ))
         return self
     
