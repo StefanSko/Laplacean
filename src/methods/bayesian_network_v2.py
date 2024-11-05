@@ -125,30 +125,21 @@ class DataBlockBuilder:
     def int_scalar(self, name: str, value: Array) -> 'DataBlockBuilder':
         """Declare an integer scalar (usually for sizes)"""
         self.model_builder._size_vars[name] = int(value)
-        self.model_builder.variables[name] = ObservedData(
+        self.model_builder.variables[name] = ObservedVariable(
             name=name,
             shape=(),
-            observed_values=value,
-            param_index=None  # Fully observed, no parameters needed
+            provider=lambda _: value
         )
         return self
 
     def vector(self, name: str, size: str) -> 'DataBlockBuilder':
         """Declare a vector of observations"""
         vector_size = self.model_builder._size_vars[size]
-        # Initially no observed values - will be bound later
-        # But we allocate parameter space for potential missing values
-        #param_index = ParamIndex.vector(
-        #    self.model_builder._current_param_idx,
-        #    self.model_builder._current_param_idx + vector_size
-        #)
-        #self.model_builder._current_param_idx += vector_size
 
-        self.model_builder.variables[name] = PartiallyObservedData(
+        self.model_builder.variables[name] = ObservedVariable(
             name=name,
             shape=(vector_size,),
-            observed_values=None,  # Will be set when data is bound
-            param_index=None  # For potential missing values
+            provider=lambda x: x  # This will be replaced when data is bound
         )
         return self
 
@@ -170,8 +161,7 @@ class ParameterBlockBuilder:
         self.model_builder.variables[name] = Parameter(
             name=name,
             shape=(),
-            observed_values=None,  # Unobserved (parameter)
-            param_index=param_index
+            provider=param_index
         )
         return self
 
@@ -187,8 +177,7 @@ class ParameterBlockBuilder:
         self.model_builder.variables[name] = Parameter(
             name=name,
             shape=(vector_size,),
-            observed_values=None,  # Unobserved (parameter)
-            param_index=param_index
+            provider=param_index
         )
         return self
 
@@ -218,8 +207,7 @@ class ModelBlockBuilder:
             loc_var = Parameter(
                 name=f"{target}_loc",
                 shape=(),
-                observed_values=jnp.array(loc),
-                param_index=None
+                provider=lambda _: jnp.array(loc)
             )
 
         # Handle scale parameter
@@ -229,8 +217,7 @@ class ModelBlockBuilder:
             scale_var = Parameter(
                 name=f"{target}_scale",
                 shape=(),
-                observed_values=jnp.array(scale),
-                param_index=None
+                provider=lambda _: jnp.array(scale)
             )
 
         self.model_builder.edges.append(Edge(
@@ -273,12 +260,10 @@ def bind_data(
     for name, value in data.items():
         if name in new_variables:
             var = new_variables[name]
-            # Create new variable with observed values but keep other attributes
-            new_variables[name] = ObservedData(
+            new_variables[name] = ObservedVariable(
                 name=var.name,
                 shape=var.shape,
-                observed_values=value,
-                param_index=var.param_index
+                provider=lambda _: value
             )
 
     return BayesianNetwork(
