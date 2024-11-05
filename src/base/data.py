@@ -4,6 +4,8 @@ from typing import TypeVar, Protocol, Union, cast, runtime_checkable
 
 T = TypeVar('T')
 
+
+
 @jdc.pytree_dataclass
 class JaxHMCData:
     epsilon: float
@@ -64,3 +66,9 @@ class RandomVar:
     def from_index(cls, name: str, shape: tuple[int, ...], index: Index) -> 'RandomVar':
         """Convenience constructor for index-based random variables"""
         return cls(name, shape, index)
+
+Parameter = RandomVar
+"""Type alias for unobserved random variables (parameters to be inferred)"""
+
+ObservedVariable = RandomVar
+"""Type alias for observed random variables (data)"""
