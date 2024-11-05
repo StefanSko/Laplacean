@@ -1,130 +1,79 @@
-from typing import Callable, Generic, TypeVar, Union
-import jax_dataclasses as jdc
+from typing import Callable, Union, cast
 import jax.numpy as jnp
 from jaxtyping import Array, Float
 from jax.scipy.stats import norm, expon
 import jax
 
-# Core type definitions
-RandomVar = TypeVar('RandomVar')
+from base.data import RandomVar, ObservedVariable, Parameter, Index
+
 LogDensity = Float[Array, ""]
 
-@jdc.pytree_dataclass
-class ParamIndex:
-    """Unified parameter indexing"""
-    indices: tuple[slice, ...] = (slice(None),)
-    
-    @staticmethod
-    def single(i: int) -> 'ParamIndex':
-        return ParamIndex((slice(i, i+1),))
-    
-    @staticmethod
-    def vector(start: int, end: int | None = None) -> 'ParamIndex':
-        return ParamIndex((slice(start, end),))
-    
-    def select(self, params: Array) -> Array:
-        if len(self.indices) == 1:
-            return params[self.indices[0]]
-        return params[self.indices]
 
-class RandomVariable(Generic[RandomVar]):
-    """Unified representation of random variables (both parameters and data)"""
-    name: str
-    shape: tuple[int, ...]
-    observed_values: Array | None = None
-    param_index: ParamIndex | None = None
-    
-    def __init__(self, name: str, shape: tuple[int, ...], observed_values: Array | None, param_index: ParamIndex | None) -> None:
-        self.name = name
-        self.shape = shape
-        self.observed_values = observed_values
-        self.param_index = param_index
-
-    def get_value(self, params: Array) -> Array:
-        """Get current value, combining observed and parameter values"""
-        # Handle case where we have no parameters (fully observed)
-        if self.param_index is None:
-            return self.observed_values
-        
-        # Get parameter values
-        param_values = self.param_index.select(params)
-        
-        # If no observed values, return parameters
-        if self.observed_values is None:
-            return param_values
-        
-        # Handle partially observed values using JAX operations
-        mask = ~jnp.isnan(self.observed_values)
-        return jnp.where(mask, self.observed_values, param_values)
-
-    def is_observed(self) -> bool:
-        return self.observed_values is not None
-
-    def has_missing(self) -> bool:
-        return (self.observed_values is not None and 
-                jnp.any(jnp.isnan(self.observed_values)))
-
-class Distribution(Generic[RandomVar]):
+class Distribution:
     """Probability distribution over random variables"""
-    log_prob: Callable[[RandomVariable[RandomVar], Array], LogDensity]
-    
-    def __init__(self, log_prob: Callable[[RandomVariable[RandomVar], Array], LogDensity]):
+    log_prob: Callable[[RandomVar, ObservedVariable | Parameter], LogDensity]
+
+    def __init__(self, log_prob: Callable[[RandomVar, ObservedVariable | Parameter], LogDensity]):
         self.log_prob = log_prob
 
     @staticmethod
     def normal(
-        loc: Union[RandomVariable[RandomVar], float],
-        scale: Union[RandomVariable[RandomVar], float]
-    ) -> 'Distribution[RandomVar]':
-        def log_prob(rv: RandomVariable[RandomVar], params: Array) -> LogDensity:
-            value = rv.get_value(params)
-            loc_value = (loc.get_value(params) if isinstance(loc, RandomVariable) 
-                        else jnp.array(loc))
-            scale_value = (scale.get_value(params) if isinstance(scale, RandomVariable) 
-                          else jnp.array(scale))
+            loc: Union[RandomVar, float],
+            scale: Union[RandomVar, float]
+    ) -> 'Distribution':
+        def log_prob(rv: RandomVar, params: ObservedVariable | Parameter) -> LogDensity:
+            value = rv.get_value(cast(Array, params))
+            loc_value = (jnp.array(loc) if isinstance(loc, float)
+                         else loc.get_value(cast(Array, params)))
+            scale_value = (jnp.array(scale) if isinstance(scale, float)
+                           else scale.get_value(cast(Array, params)))
             return jnp.sum(norm.logpdf(value, loc_value, scale_value))
+
         return Distribution(log_prob)
 
     @staticmethod
-    def exponential(rate: float) -> 'Distribution[RandomVar]':
-        def log_prob(rv: RandomVariable[RandomVar], params: Array) -> LogDensity:
-            value = rv.get_value(params)
-            return jnp.sum(expon.logpdf(value, scale=1/rate))
+    def exponential(rate: float) -> 'Distribution':
+        def log_prob(rv: RandomVar, params: ObservedVariable | Parameter) -> LogDensity:
+            value = rv.get_value(cast(Array, params))
+            return jnp.sum(expon.logpdf(value, scale=1 / rate))
+
         return Distribution(log_prob)
 
-class Edge(Generic[RandomVar]):
+
+class Edge:
     """Probabilistic relationship between variables"""
-    child: RandomVariable[RandomVar]
-    distribution: Distribution[RandomVar]
+    child: RandomVar
+    distribution: Distribution
     name: str
-    
-    def __init__(self, child: RandomVariable[RandomVar], distribution: Distribution[RandomVar], name: str = "unnamed_edge"):
+
+    def __init__(self, child: RandomVar, distribution: Distribution, name: str = "unnamed_edge"):
         self.child = child
         self.distribution = distribution
         self.name = name
 
-    def log_prob(self, params: Array) -> LogDensity:
+    def log_prob(self, params: ObservedVariable | Parameter) -> LogDensity:
         return self.distribution.log_prob(self.child, params)
-        
+
     def __repr__(self) -> str:
         return f"Edge({self.name})"
 
-class BayesianNetwork(Generic[RandomVar]):
+
+class BayesianNetwork:
     """Complete probabilistic graphical model"""
-    variables: dict[str, RandomVariable[RandomVar]]
-    edges: list[Edge[RandomVar]]
+    variables: dict[str, RandomVar]
+    edges: list[Edge]
     param_size: int
-    
-    def __init__(self, variables: dict, edges: list[Edge[RandomVar]], param_size: int):
+
+    def __init__(self, variables: dict, edges: list[Edge], param_size: int):
         self.variables = variables
         self.edges = edges
         self.param_size = param_size
 
-    def log_prob(self, params: Array) -> LogDensity:
+    def log_prob(self, params: RandomVar) -> LogDensity:
         """Compute total log probability of model"""
         return jnp.sum(jnp.array([edge.log_prob(params) for edge in self.edges]))
 
-    def potential_energy(self, params: Array) -> LogDensity:
+    def potential_energy(self, params: RandomVar) -> LogDensity:
         """Compute potential energy (negative log probability)"""
         return -self.log_prob(params)
 
@@ -135,14 +84,15 @@ class BayesianNetwork(Generic[RandomVar]):
         """
         return jax.grad(self.potential_energy)(params)
 
+
 class ModelBuilder:
     """Stan-like model builder interface"""
-    
-    variables: dict[str, RandomVariable]
-    edges: list[Edge[RandomVar]]
+
+    variables: dict[str, RandomVar]
+    edges: list[Edge]
     _size_vars: dict[str, int]
     _current_param_idx: int
-    
+
     def __init__(self):
         self.variables = {}
         self.edges = []
@@ -158,29 +108,31 @@ class ModelBuilder:
     def model(self) -> 'ModelBlockBuilder':
         return ModelBlockBuilder(self)
 
-    def build(self) -> BayesianNetwork[RandomVar]:
+    def build(self) -> BayesianNetwork:
         return BayesianNetwork(
             variables=self.variables,
             edges=self.edges,
             param_size=self._current_param_idx
         )
 
+
 class DataBlockBuilder:
     """Builder for data block declarations"""
+
     def __init__(self, model_builder: ModelBuilder):
         self.model_builder = model_builder
-    
+
     def int_scalar(self, name: str, value: Array) -> 'DataBlockBuilder':
         """Declare an integer scalar (usually for sizes)"""
         self.model_builder._size_vars[name] = int(value)
-        self.model_builder.variables[name] = RandomVariable(
+        self.model_builder.variables[name] = ObservedData(
             name=name,
             shape=(),
             observed_values=value,
             param_index=None  # Fully observed, no parameters needed
         )
         return self
-    
+
     def vector(self, name: str, size: str) -> 'DataBlockBuilder':
         """Declare a vector of observations"""
         vector_size = self.model_builder._size_vars[size]
@@ -191,149 +143,155 @@ class DataBlockBuilder:
         #    self.model_builder._current_param_idx + vector_size
         #)
         #self.model_builder._current_param_idx += vector_size
-        
-        self.model_builder.variables[name] = RandomVariable(
+
+        self.model_builder.variables[name] = PartiallyObservedData(
             name=name,
             shape=(vector_size,),
             observed_values=None,  # Will be set when data is bound
             param_index=None  # For potential missing values
         )
         return self
-    
+
     def done(self) -> ModelBuilder:
         return self.model_builder
 
+
 class ParameterBlockBuilder:
     """Builder for parameter declarations"""
+
     def __init__(self, model_builder: ModelBuilder):
         self.model_builder = model_builder
-    
+
     def real(self, name: str) -> 'ParameterBlockBuilder':
         """Declare a real-valued scalar parameter"""
-        param_index = ParamIndex.single(self.model_builder._current_param_idx)
+        param_index = Index.single(self.model_builder._current_param_idx)
         self.model_builder._current_param_idx += 1
-        
-        self.model_builder.variables[name] = RandomVariable(
+
+        self.model_builder.variables[name] = Parameter(
             name=name,
             shape=(),
             observed_values=None,  # Unobserved (parameter)
             param_index=param_index
         )
         return self
-    
+
     def vector(self, name: str, size: str) -> 'ParameterBlockBuilder':
         """Declare a vector of parameters"""
         vector_size = self.model_builder._size_vars[size]
-        param_index = ParamIndex.vector(
+        param_index = Index.vector(
             self.model_builder._current_param_idx,
             self.model_builder._current_param_idx + vector_size
         )
         self.model_builder._current_param_idx += vector_size
-        
-        self.model_builder.variables[name] = RandomVariable(
+
+        self.model_builder.variables[name] = Parameter(
             name=name,
             shape=(vector_size,),
             observed_values=None,  # Unobserved (parameter)
             param_index=param_index
         )
         return self
-    
+
     def done(self) -> ModelBuilder:
         return self.model_builder
 
+
 class ModelBlockBuilder:
     """Builder for model relationships"""
+
     def __init__(self, model_builder: ModelBuilder):
         self.model_builder = model_builder
-    
+
     def normal(
-        self,
-        target: str,
-        loc: Union[str, float],
-        scale: Union[str, float]
+            self,
+            target: str,
+            loc: Union[str, float],
+            scale: Union[str, float]
     ) -> 'ModelBlockBuilder':
         """Add normal distribution relationship"""
         target_var = self.model_builder.variables[target]
-        
+
         # Handle location parameter
         if isinstance(loc, str):
             loc_var = self.model_builder.variables[loc]
         else:
-            loc_var = RandomVariable(
+            loc_var = Parameter(
                 name=f"{target}_loc",
                 shape=(),
                 observed_values=jnp.array(loc),
                 param_index=None
             )
-            
+
         # Handle scale parameter
         if isinstance(scale, str):
             scale_var = self.model_builder.variables[scale]
         else:
-            scale_var = RandomVariable(
+            scale_var = Parameter(
                 name=f"{target}_scale",
                 shape=(),
                 observed_values=jnp.array(scale),
                 param_index=None
             )
-        
+
         self.model_builder.edges.append(Edge(
             child=target_var,
             distribution=Distribution.normal(loc_var, scale_var),
             name=f"normal_{target}"
         ))
         return self
-    
+
     def exponential(
-        self,
-        target: str,
-        rate: float
+            self,
+            target: str,
+            rate: float
     ) -> 'ModelBlockBuilder':
         """Add exponential distribution relationship"""
         target_var = self.model_builder.variables[target]
-        
+
         self.model_builder.edges.append(Edge(
             child=target_var,
             distribution=Distribution.exponential(rate),
-            name = f"exponential_{target}"
+            name=f"exponential_{target}"
         ))
         return self
-    
-    def done(self) -> BayesianNetwork[RandomVar]:
+
+    def done(self) -> BayesianNetwork:
         """Finalize the model and return the BayesianNetwork"""
         return self.model_builder.build()
 
 
 def bind_data(
-    model: BayesianNetwork[RandomVar], 
-    data: dict[str, Array]
-) -> BayesianNetwork[RandomVar]:
+        model: BayesianNetwork,
+        data: dict[str, Array]
+) -> BayesianNetwork:
     """
     Bind data to model, handling missing values transparently.
     Returns a new model instance with updated variables.
     """
     new_variables = dict(model.variables)
-    
+
     for name, value in data.items():
         if name in new_variables:
             var = new_variables[name]
             # Create new variable with observed values but keep other attributes
-            new_variables[name] = RandomVariable(
+            new_variables[name] = ObservedData(
                 name=var.name,
                 shape=var.shape,
                 observed_values=value,
                 param_index=var.param_index
             )
-    
+
     return BayesianNetwork(
         variables=new_variables,
         edges=model.edges,
         param_size=model.param_size
     )
+
+
 #TODO: FIXME!! Parameters should not trasnfer to data part if not explicitly desired
 def get_initial_params(
-    model: BayesianNetwork[RandomVar],
-    random_key: jax.random.PRNGKey,
+        model: BayesianNetwork,
+        random_key: jax.random.PRNGKey,
 ) -> Array:
     """
     Generate initial parameters for the model.
@@ -341,22 +299,22 @@ def get_initial_params(
     """
     # Split key for different random number generations
     key1, key2 = jax.random.split(random_key)
-    
+
     # Initialize parameters array
     params = jnp.zeros(model.param_size)
-    
+
     # Helper function to initialize a variable's parameters
     def init_variable_params(
-        var: RandomVariable[RandomVar], 
-        key: jax.random.PRNGKey
+            var: RandomVar,
+            key: jax.random.PRNGKey
     ) -> Array:
         if var.param_index is None:
             return params
-        
+
         # Get the slice for this variable's parameters
         idx = var.param_index.indices[0]
         size = idx.stop - idx.start if idx.stop else 1
-        
+
         # Generate random initial values
         if var.has_missing():
             # For missing values, initialize near observed data mean/std
@@ -371,18 +329,13 @@ def get_initial_params(
         else:
             # For parameters, use standard normal initialization
             values = jax.random.normal(key, (size,))
-        
+
         return params.at[idx].set(values)
-    
+
     # Initialize all variables
     for var in model.variables.values():
         if var.param_index is not None:
             key1, key2 = jax.random.split(key1)
             params = init_variable_params(var, key2)
-    
+
     return params
-
-
-
-
-
