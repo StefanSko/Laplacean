@@ -1,10 +1,6 @@
 from jaxtyping import Array
 import jax_dataclasses as jdc
-from typing import TypeVar, Protocol, Union, cast, runtime_checkable
-
-T = TypeVar('T')
-
-
+from typing import Callable
 
 @jdc.pytree_dataclass
 class JaxHMCData:
@@ -37,19 +33,19 @@ class Index:
             return random_var[self.indices[0]]
         return random_var[self.indices]
 
-
-@runtime_checkable
-class DataProvider(Protocol):
-    def __call__(self, random_vars: Array) -> Array: ...
+    
+DataProvider = Callable[[], Array]
+    
+def from_idx(vec: Array, idx: Index) -> DataProvider:
+    def idx_provider() -> Array:
+        return idx.select(vec)
+    return idx_provider
 
 class RandomVar:
-    def __init__(self, name: str, shape: tuple[int, ...], provider: Union[DataProvider, Index]) -> None:
+    def __init__(self, name: str, shape: tuple[int, ...], provider: DataProvider) -> None:
         self._name = name
         self._shape = shape
-        # Provider can be either a callable or an Index
-        self._provider: DataProvider = (
-            provider if isinstance(provider, DataProvider) 
-                                      else cast(DataProvider, lambda x: provider.select(x)))
+        self._provider: DataProvider = provider
 
     @property
     def name(self) -> str:
@@ -59,13 +55,14 @@ class RandomVar:
     def shape(self) -> tuple[int, ...]:
         return self._shape
 
-    def get_value(self, random_vars: Array) -> Array:
-        return self._provider(random_vars)
+    def get_value(self) -> Array:
+        return self._provider()
 
     @classmethod
-    def from_index(cls, name: str, shape: tuple[int, ...], index: Index) -> 'RandomVar':
+    def from_index(cls, name: str, shape: tuple[int, ...], index: Index, vec: Array) -> 'RandomVar':
         """Convenience constructor for index-based random variables"""
-        return cls(name, shape, index)
+        return cls(name, shape, from_idx(vec, index))
+
 
 Parameter = RandomVar
 """Type alias for unobserved random variables (parameters to be inferred)"""
