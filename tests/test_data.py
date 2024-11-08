@@ -22,6 +22,6 @@ def test_random_var():
     len = 10
     test_index: Index = Index.vector(start=0, end=len)
     test_nums: jnp.array = jnp.array([num for num in range(0, len+10)])
-    random_var: RandomVar = RandomVar.from_index(name='mu', shape=(len,), index=test_index, vec=test_nums)
+    random_var: RandomVar = RandomVar.from_index(name='mu', index=test_index, vec=test_nums)
     assert random_var.name == 'mu'
     assert jnp.allclose(random_var.get_value(), test_nums[:10], atol=1e-6)

@@ -59,9 +59,10 @@ class RandomVar:
         return self._provider()
 
     @classmethod
-    def from_index(cls, name: str, shape: tuple[int, ...], index: Index, vec: Array) -> 'RandomVar':
+    def from_index(cls, name: str, index: Index, vec: Array) -> 'RandomVar':
         """Convenience constructor for index-based random variables"""
-        return cls(name, shape, from_idx(vec, index))
+        selected_data = index.select(vec)
+        return cls(name, selected_data.shape, from_idx(vec, index))
 
 
 Parameter = RandomVar
