@@ -1,3 +1,4 @@
+import pytest
 import jax.numpy as jnp
 
 
@@ -25,3 +26,56 @@ def test_random_var():
     random_var: RandomVar = RandomVar.from_index(name='mu', index=test_index, vec=test_nums)
     assert random_var.name == 'mu'
     assert jnp.allclose(random_var.get_value(), test_nums[:10], atol=1e-6)
+
+
+def test_index_validations():
+    # Test empty indices
+    with pytest.raises(ValueError, match="Indices tuple cannot be empty"):
+        Index(())
+    
+    # Test invalid index type
+    with pytest.raises(TypeError, match="All indices must be slice objects"):
+        Index((1,))  # trying to pass an int instead of slice
+    
+    # Test negative start index
+    with pytest.raises(ValueError, match="Start index cannot be negative"):
+        Index.vector(start=-1)
+    
+    # Test invalid end index
+    with pytest.raises(ValueError, match="End index must be greater than start index"):
+        Index.vector(start=5, end=3)
+    
+    # Test array dimension mismatch
+    test_index = Index((slice(0, 1), slice(0, 1)))  # 2D index
+    test_array = jnp.array([1, 2, 3])  # 1D array
+    with pytest.raises(ValueError, match="Too many indices .* for array"):
+        test_index.select(test_array)
+
+
+def test_random_var_validations():
+    #TODO: TOFIX
+    test_array = jnp.array([1, 2, 3])
+    valid_index = Index.vector(0, 2)
+    
+    # Test empty name
+    with pytest.raises(ValueError, match="Name cannot be empty"):
+        RandomVar.from_index("", valid_index, test_array)
+    
+    # Test None vector
+    with pytest.raises(ValueError, match="Input vector cannot be None"):
+        RandomVar.from_index("test", valid_index, None)
+    
+    # Test invalid index type
+    with pytest.raises(TypeError, match="index must be an Index instance"):
+        RandomVar.from_index("test", "not_an_index", test_array)
+    
+    # Test None index
+    with pytest.raises(TypeError, match="index must be an Index instance"):
+        RandomVar.from_index("test", None, test_array)
+
+
+def test_select_none_array():
+    #TODO: TOFIX
+    test_index = Index.vector(0, 2)
+    with pytest.raises(ValueError, match="Input array cannot be None"):
+        test_index.select(None)

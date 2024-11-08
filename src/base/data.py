@@ -15,6 +15,10 @@ class Index:
     indices: tuple[slice, ...]
 
     def __init__(self, indices: tuple[slice, ...]):
+        if not indices:
+            raise ValueError("Indices tuple cannot be empty")
+        if not all(isinstance(idx, slice) for idx in indices):
+            raise TypeError("All indices must be slice objects")
         self.indices = indices
 
     @staticmethod
@@ -25,10 +29,16 @@ class Index:
     @staticmethod
     def vector(start: int, end: int | None = None) -> 'Index':
         """Create an index for a vector of values"""
+        if start < 0:
+            raise ValueError("Start index cannot be negative")
+        if end is not None and end <= start:
+            raise ValueError("End index must be greater than start index")
         return Index((slice(start, end),))
 
     def select(self, random_var: Array) -> Array:
         """Select values from an array using this index"""
+        if len(self.indices) > random_var.ndim:
+            raise ValueError(f"Too many indices ({len(self.indices)}) for array with {random_var.ndim} dimensions")
         if len(self.indices) == 1:
             return random_var[self.indices[0]]
         return random_var[self.indices]
@@ -43,9 +53,16 @@ def from_idx(vec: Array, idx: Index) -> DataProvider:
 
 class RandomVar:
     def __init__(self, name: str, shape: tuple[int, ...], provider: DataProvider) -> None:
+        if not name:
+            raise ValueError("Name cannot be empty")
+        if not shape:
+            raise ValueError("Shape tuple cannot be empty")
+        if not all(dim > 0 for dim in shape):
+            raise ValueError("All dimensions must be positive")
+        
         self._name = name
         self._shape = shape
-        self._provider: DataProvider = provider
+        self._provider = provider
 
     @property
     def name(self) -> str:
