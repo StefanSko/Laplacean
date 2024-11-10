@@ -1,4 +1,4 @@
-from typing import Callable, Union, cast
+from typing import Callable, Union
 import jax.numpy as jnp
 from jaxtyping import Array, Float
 from jax.scipy.stats import norm, expon
