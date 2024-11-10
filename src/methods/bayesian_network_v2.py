@@ -67,20 +67,20 @@ class BayesianNetwork:
         self.edges = edges
         self.param_size = param_size
 
-    def log_prob(self, params: RandomVar) -> LogDensity:
+    def log_prob(self) -> LogDensity:
         """Compute total log probability of model"""
         return jnp.sum(jnp.array([edge.log_prob() for edge in self.edges]))
 
-    def potential_energy(self, params: RandomVar) -> LogDensity:
+    def potential_energy(self) -> LogDensity:
         """Compute potential energy (negative log probability)"""
-        return -self.log_prob(params)
+        return -self.log_prob()
 
-    def gradient(self, params: Array) -> Array:
+    def gradient(self) -> Array:
         """
         Compute gradient of potential energy with respect to parameters.
         Uses JAX automatic differentiation.
         """
-        return jax.grad(self.potential_energy)(params)
+        return jax.grad(self.potential_energy)()
 
 
 class ModelBuilder:
