@@ -11,9 +11,9 @@ LogDensity = Float[Array, ""]
 
 class Distribution:
     """Probability distribution over random variables"""
-    log_prob: Callable[[RandomVar, ObservedVariable | Parameter], LogDensity]
+    log_prob: Callable[[RandomVar], LogDensity]
 
-    def __init__(self, log_prob: Callable[[RandomVar, ObservedVariable | Parameter], LogDensity]):
+    def __init__(self, log_prob: Callable[[RandomVar], LogDensity]):
         self.log_prob = log_prob
 
     @staticmethod
@@ -21,20 +21,18 @@ class Distribution:
             loc: Union[RandomVar, float],
             scale: Union[RandomVar, float]
     ) -> 'Distribution':
-        def log_prob(rv: RandomVar, params: ObservedVariable | Parameter) -> LogDensity:
-            value = rv.get_value(cast(Array, params))
-            loc_value = (jnp.array(loc) if isinstance(loc, float)
-                         else loc.get_value(cast(Array, params)))
-            scale_value = (jnp.array(scale) if isinstance(scale, float)
-                           else scale.get_value(cast(Array, params)))
+        def log_prob(rv: RandomVar) -> LogDensity:
+            value = rv.get_value()
+            loc_value = jnp.array(loc) if isinstance(loc, float) else loc.get_value()
+            scale_value = jnp.array(scale) if isinstance(scale, float) else scale.get_value()
             return jnp.sum(norm.logpdf(value, loc_value, scale_value))
 
         return Distribution(log_prob)
 
     @staticmethod
     def exponential(rate: float) -> 'Distribution':
-        def log_prob(rv: RandomVar, params: ObservedVariable | Parameter) -> LogDensity:
-            value = rv.get_value(cast(Array, params))
+        def log_prob(rv: RandomVar) -> LogDensity:
+            value = rv.get_value()
             return jnp.sum(expon.logpdf(value, scale=1 / rate))
 
         return Distribution(log_prob)
@@ -51,8 +49,8 @@ class Edge:
         self.distribution = distribution
         self.name = name
 
-    def log_prob(self, params: ObservedVariable | Parameter) -> LogDensity:
-        return self.distribution.log_prob(self.child, params)
+    def log_prob(self) -> LogDensity:
+        return self.distribution.log_prob(self.child)
 
     def __repr__(self) -> str:
         return f"Edge({self.name})"
@@ -71,7 +69,7 @@ class BayesianNetwork:
 
     def log_prob(self, params: RandomVar) -> LogDensity:
         """Compute total log probability of model"""
-        return jnp.sum(jnp.array([edge.log_prob(params) for edge in self.edges]))
+        return jnp.sum(jnp.array([edge.log_prob() for edge in self.edges]))
 
     def potential_energy(self, params: RandomVar) -> LogDensity:
         """Compute potential energy (negative log probability)"""
