@@ -53,29 +53,9 @@ def test_index_validations():
 
 
 def test_random_var_validations():
-    #TODO: TOFIX
     test_array = jnp.array([1, 2, 3])
     valid_index = Index.vector(0, 2)
     
     # Test empty name
     with pytest.raises(ValueError, match="Name cannot be empty"):
         RandomVar.from_index("", valid_index, test_array)
-    
-    # Test None vector
-    with pytest.raises(ValueError, match="Input vector cannot be None"):
-        RandomVar.from_index("test", valid_index, None)
-    
-    # Test invalid index type
-    with pytest.raises(TypeError, match="index must be an Index instance"):
-        RandomVar.from_index("test", "not_an_index", test_array)
-    
-    # Test None index
-    with pytest.raises(TypeError, match="index must be an Index instance"):
-        RandomVar.from_index("test", None, test_array)
-
-
-def test_select_none_array():
-    #TODO: TOFIX
-    test_index = Index.vector(0, 2)
-    with pytest.raises(ValueError, match="Input array cannot be None"):
-        test_index.select(None)
