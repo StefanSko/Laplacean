@@ -78,9 +78,12 @@ class BayesianNetwork:
     def gradient(self) -> Array:
         """
         Compute gradient of potential energy with respect to parameters.
-        Uses JAX automatic differentiation.
+        Uses JAX automatic differentiation to trace through the edges.
         """
-        return jax.grad(self.potential_energy)()
+        # JAX will automatically trace through:
+        # 1. Edge.log_prob() -> Distribution.log_prob() -> RandomVar.get_value()
+        #TODO: Think about a fix of how to traverse parameters
+        return jax.grad(lambda: self.potential_energy())()
 
 
 class ModelBuilder:
