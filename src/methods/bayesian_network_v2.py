@@ -85,6 +85,31 @@ class BayesianNetwork:
         #TODO: Think about a fix of how to traverse parameters
         return jax.grad(lambda: self.potential_energy())()
 
+class BayesianJaxDiffExecutor:
+
+    model: BayesianNetwork
+    param_indices: dict[str, Index]
+
+    def __init__(self, model: BayesianNetwork, param_indices: dict[str, Index]):
+        self.model = model
+        self.param_indices = param_indices
+    
+    def log_prob(self, params: Array) -> LogDensity:
+        """
+        Compute total log probability of model using views into params array
+        
+        Args:
+            params: Flat array containing all parameters
+        """
+        def edge_log_prob(edge: Edge) -> LogDensity:
+            # Get parameter values directly from params array using indices
+            param_values = {
+                name: self.param_indices[name].select(params)
+                for name in edge.get_parameter_names()
+            }
+            return edge.log_prob(param_values)
+
+        return jnp.sum(jnp.array([edge_log_prob(edge) for edge in self.model.edges]))
 
 class ModelBuilder:
     """Stan-like model builder interface"""
