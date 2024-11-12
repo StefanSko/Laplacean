@@ -1,6 +1,6 @@
+from typing import Literal, Generic, TypeVar, Protocol
 from jaxtyping import Array
 import jax_dataclasses as jdc
-from typing import Callable
 
 @jdc.pytree_dataclass
 class JaxHMCData:
@@ -8,7 +8,6 @@ class JaxHMCData:
     L: int
     current_q: Array
     key: Array
-
 
 class Index:
     """Unified indexing for both parameters and data"""
@@ -43,16 +42,40 @@ class Index:
             return random_var[self.indices[0]]
         return random_var[self.indices]
 
-    
-DataProvider = Callable[[], Array]
-    
-def from_idx(vec: Array, idx: Index) -> DataProvider:
-    def idx_provider() -> Array:
-        return idx.select(vec)
-    return idx_provider
 
-class RandomVar:
-    def __init__(self, name: str, shape: tuple[int, ...], provider: DataProvider) -> None:
+# Define type variants
+VarKind = Literal["parameter", "observed"]
+P = TypeVar("P", bound=VarKind)
+
+class ValueProvider(Protocol):
+    def __call__(self, state: Array | None = None) -> Array:
+        """
+        Unified interface for both parameters and data
+        - For data: state is ignored (None)
+        - For parameters: state is the current parameter vector
+        """
+        ...
+
+# Implementation for data
+def make_data_provider(data: Array) -> ValueProvider:
+    def provider(state: Array | None = None) -> Array:
+        return data
+    return provider
+
+# Implementation for parameters
+def make_parameter_selector(index: Index) -> ValueProvider:
+    def selector(state: Array | None = None) -> Array:
+        if state is None:
+            raise ValueError("Parameter selector requires state")
+        return index.select(state)
+    return selector
+
+class RandomVar(Generic[P]):
+    def __init__(self, 
+                 name: str, 
+                 shape: tuple[int, ...], 
+                 provider: ValueProvider,
+                 var_kind: P) -> None:
         if not name:
             raise ValueError("Name cannot be empty")
         if not shape:
@@ -63,6 +86,7 @@ class RandomVar:
         self._name = name
         self._shape = shape
         self._provider = provider
+        self._var_kind = var_kind
 
     @property
     def name(self) -> str:
@@ -72,18 +96,23 @@ class RandomVar:
     def shape(self) -> tuple[int, ...]:
         return self._shape
 
-    def get_value(self) -> Array:
-        return self._provider()
+    @property
+    def var_kind(self) -> P:
+        return self._var_kind
 
-    @classmethod
-    def from_index(cls, name: str, index: Index, vec: Array) -> 'RandomVar':
-        """Convenience constructor for index-based random variables"""
-        selected_data = index.select(vec)
-        return cls(name, selected_data.shape, from_idx(vec, index))
+    def get_value(self, state: Array | None = None) -> Array:
+        return self._provider(state)
 
+class RandomVarFactory:
+    @staticmethod
+    def from_data(name: str, data: Array) -> RandomVar[Literal["observed"]]:
+        return RandomVar(name, data.shape, make_data_provider(data), "observed")
 
-Parameter = RandomVar
-"""Type alias for unobserved random variables (parameters to be inferred)"""
+    @staticmethod
+    def from_parameter(name: str, index: Index) -> RandomVar[Literal["parameter"]]:
+        return RandomVar(name, (...), make_parameter_selector(index), "parameter")
 
-ObservedVariable = RandomVar
-"""Type alias for observed random variables (data)"""
+# Type aliases using the new syntax
+Parameter = RandomVar[Literal["parameter"]]
+ObservedVariable = RandomVar[Literal["observed"]]
+
