@@ -49,3 +49,16 @@ How to achiebe potential differentiation wrt Parameters in structurally inspired
         return jnp.sum(jnp.array([edge_log_prob(edge) for edge in self.edges]))`
 
 
+## Data Conceptualization in Probabilistic Inference
+
+In probabilistic inference, we deal with two fundamental types of variables:
+
+1. **Observed Variables (Data)**
+   - Fixed arrays that remain constant throughout inference
+   - Pure functions: `() -> Array`
+   - Represent known measurements or observations
+
+2. **Parameters (Unobserved Variables)**
+   - Values to be estimated through inference
+   - Functions that select from current state: `Array -> Array`
+   - Change during each iteration of the inference process
