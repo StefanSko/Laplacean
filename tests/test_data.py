@@ -28,6 +28,17 @@ def test_random_var():
     assert jnp.allclose(random_var.get_value(), test_nums[:10], atol=1e-6)
 
 
+def test_view_on_random_var():
+    len = 10
+    test_index_1: Index = Index.vector(start=0, end=len)
+    test_index_2: Index = Index.vector(start=len, end=2*len)
+    test_nums: jnp.array = jnp.array([num for num in range(0, len+10)])
+    random_var_1: RandomVar = RandomVar.from_index(name='mu_1', index=test_index_1, vec=test_nums)
+    random_var_2: RandomVar = RandomVar.from_index(name='mu_2', index=test_index_2, vec=test_nums)
+    assert jnp.allclose(random_var_1.get_value(), test_nums[:10], atol=1e-6)
+    assert jnp.allclose(random_var_2.get_value(), test_nums[10:], atol=1e-6)
+
+
 def test_index_validations():
     # Test empty indices
     with pytest.raises(ValueError, match="Indices tuple cannot be empty"):
