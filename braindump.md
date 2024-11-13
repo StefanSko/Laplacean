@@ -62,3 +62,31 @@ In probabilistic inference, we deal with two fundamental types of variables:
    - Values to be estimated through inference
    - Functions that select from current state: `Array -> Array`
    - Change during each iteration of the inference process
+
+
+# Bayesian Model Conceptualization
+
+## Core Idea
+All variables (both parameters and data) can be viewed as outputs of generative processes, unified through a common interface:
+- Parameters: Generated from prior distributions, updated during inference
+- Data: Generated from an unknown true process we're trying to approximate
+
+## Key Insights
+1. Both parameters and data are treated as array slices through a common interface
+2. The distinction between parameters and data emerges from how they're used:
+   - Parameters: Updated during inference (state = current_q)
+   - Data: Fixed observations (state = observed_data)
+3. Distributions (priors and likelihood) operate uniformly on both types
+4. The Index abstraction allows flexible partitioning of both parameter and data spaces
+
+## Practical Benefits
+1. Unified interface simplifies implementation
+2. Natural support for hierarchical models
+3. Easy parameter space exploration through HMC
+4. Flexible data partitioning for cross-validation or mini-batching
+
+## Mathematical Connection
+This implementation reflects the symmetry in Bayesian inference:
+- Prior: p(θ) - Distribution over parameters
+- Likelihood: p(y|θ) - Distribution over data given parameters
+- Both are treated as probability distributions with the same interface
