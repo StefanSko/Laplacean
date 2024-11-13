@@ -21,6 +21,7 @@ class Distribution:
             loc: float,
             scale: float
     ) -> 'Distribution':
+        #in case of likelihood var is data
         def log_prob(rv: RandomVar, var: Array) -> LogDensity:
             value = rv.get_value(var)
             loc_value = jnp.array(loc)
