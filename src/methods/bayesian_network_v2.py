@@ -11,28 +11,28 @@ LogDensity = Float[Array, ""]
 
 class Distribution:
     """Probability distribution over random variables"""
-    log_prob: Callable[[RandomVar], LogDensity]
+    log_prob: Callable[[RandomVar, Array], LogDensity]
 
-    def __init__(self, log_prob: Callable[[RandomVar], LogDensity]):
+    def __init__(self, log_prob: Callable[[RandomVar, Array], LogDensity]):
         self.log_prob = log_prob
 
     @staticmethod
     def normal(
-            loc: Union[RandomVar, float],
-            scale: Union[RandomVar, float]
+            loc: float,
+            scale: float
     ) -> 'Distribution':
-        def log_prob(rv: RandomVar) -> LogDensity:
-            value = rv.get_value()
-            loc_value = jnp.array(loc) if isinstance(loc, float) else loc.get_value()
-            scale_value = jnp.array(scale) if isinstance(scale, float) else scale.get_value()
+        def log_prob(rv: RandomVar, var: Array) -> LogDensity:
+            value = rv.get_value(var)
+            loc_value = jnp.array(loc)
+            scale_value = jnp.array(scale)
             return jnp.sum(norm.logpdf(value, loc_value, scale_value))
 
         return Distribution(log_prob)
 
     @staticmethod
     def exponential(rate: float) -> 'Distribution':
-        def log_prob(rv: RandomVar) -> LogDensity:
-            value = rv.get_value()
+        def log_prob(rv: RandomVar, var: Array) -> LogDensity:
+            value = rv.get_value(var)
             return jnp.sum(expon.logpdf(value, scale=1 / rate))
 
         return Distribution(log_prob)
@@ -43,17 +43,30 @@ class Edge:
     child: RandomVar
     distribution: Distribution
     name: str
+    parameter_names: list[str]  # Track which parameters this edge uses
 
-    def __init__(self, child: RandomVar, distribution: Distribution, name: str = "unnamed_edge"):
+    def __init__(self, child: RandomVar, distribution: Distribution, 
+                 parameter_names: list[str], name: str = "unnamed_edge"):
         self.child = child
         self.distribution = distribution
+        self.parameter_names = parameter_names
         self.name = name
 
-    def log_prob(self) -> LogDensity:
-        return self.distribution.log_prob(self.child)
+    def get_parameter_names(self) -> list[str]:
+        return self.parameter_names
+
+    def log_prob(self, param_values: dict[str, Array]) -> LogDensity:
+        """
+        Compute log probability using parameter values
+        
+        Args:
+            param_values: Dictionary mapping parameter names to their values
+        """
+        return self.distribution.log_prob(self.child, param_values)
 
     def __repr__(self) -> str:
         return f"Edge({self.name})"
+
 
 
 class BayesianNetwork:
@@ -61,11 +74,13 @@ class BayesianNetwork:
     variables: dict[str, RandomVar]
     edges: list[Edge]
     param_size: int
+    param_index: Index
 
-    def __init__(self, variables: dict, edges: list[Edge], param_size: int):
+    def __init__(self, variables: dict, edges: list[Edge], param_size: int, param_index: Index):
         self.variables = variables
         self.edges = edges
         self.param_size = param_size
+        self.param_index = param_index
 
     def log_prob(self) -> LogDensity:
         """Compute total log probability of model"""
