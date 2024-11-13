@@ -10,20 +10,16 @@ class JaxHMCData:
     key: Array
 
 class Index:
-    """Unified indexing for both parameters and data"""
-    indices: tuple[slice, ...]
+    """Unified indexing for parameters"""
+    index: slice
 
-    def __init__(self, indices: tuple[slice, ...]):
-        if not indices:
-            raise ValueError("Indices tuple cannot be empty")
-        if not all(isinstance(idx, slice) for idx in indices):
-            raise TypeError("All indices must be slice objects")
-        self.indices = indices
+    def __init__(self, index: slice):
+        self.index = index
 
     @staticmethod
     def single(i: int) -> 'Index':
         """Create an index for a single value"""
-        return Index((slice(i, i + 1),))
+        return Index(slice(i, i + 1))
 
     @staticmethod
     def vector(start: int, end: int | None = None) -> 'Index':
@@ -32,15 +28,17 @@ class Index:
             raise ValueError("Start index cannot be negative")
         if end is not None and end <= start:
             raise ValueError("End index must be greater than start index")
-        return Index((slice(start, end),))
+        return Index(slice(start, end))
 
     def select(self, random_var: Array) -> Array:
         """Select values from an array using this index"""
-        if len(self.indices) > random_var.ndim:
-            raise ValueError(f"Too many indices ({len(self.indices)}) for array with {random_var.ndim} dimensions")
-        if len(self.indices) == 1:
-            return random_var[self.indices[0]]
-        return random_var[self.indices]
+        return random_var[self.index]
+
+    def get_shape(self) -> tuple[int, ...]:
+        """Infer the shape from the slice index"""
+        start = 0 if self.index.start is None else self.index.start
+        stop = self.index.stop if self.index.stop is not None else start + 1
+        return (stop - start,)
 
 
 # Define type variants
@@ -110,7 +108,7 @@ class RandomVarFactory:
 
     @staticmethod
     def from_parameter(name: str, index: Index) -> RandomVar[Literal["parameter"]]:
-        return RandomVar(name, (...), make_parameter_selector(index), "parameter")
+        return RandomVar(name, index.get_shape(), make_parameter_selector(index), "parameter")
 
 # Type aliases using the new syntax
 Parameter = RandomVar[Literal["parameter"]]
