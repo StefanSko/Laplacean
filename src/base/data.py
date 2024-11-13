@@ -1,4 +1,4 @@
-from typing import Literal, Generic, TypeVar, Protocol
+from typing import Protocol
 from jaxtyping import Array
 import jax_dataclasses as jdc
 
@@ -40,40 +40,25 @@ class Index:
         stop = self.index.stop if self.index.stop is not None else start + 1
         return (stop - start,)
 
-
-# Define type variants
-VarKind = Literal["parameter", "observed"]
-P = TypeVar("P", bound=VarKind)
-
 class ValueProvider(Protocol):
-    def __call__(self, state: Array | None = None) -> Array:
-        """
-        Unified interface for both parameters and data
-        - For data: state is ignored (None)
-        - For parameters: state is the current parameter vector
-        """
+    def __call__(self, state: Array) -> Array:
+
         ...
 
 # Implementation for data
-def make_data_provider(data: Array) -> ValueProvider:
-    def provider(state: Array | None = None) -> Array:
-        return data
+def make_var_provider(index: Index) -> ValueProvider:
+    def provider(state: Array) -> Array:
+        if state is None:
+            raise ValueError("state required")
+        return index.select(state)
     return provider
 
-# Implementation for parameters
-def make_parameter_selector(index: Index) -> ValueProvider:
-    def selector(state: Array | None = None) -> Array:
-        if state is None:
-            raise ValueError("Parameter selector requires state")
-        return index.select(state)
-    return selector
-
-class RandomVar(Generic[P]):
+class RandomVar:
     def __init__(self, 
                  name: str, 
                  shape: tuple[int, ...], 
-                 provider: ValueProvider,
-                 var_kind: P) -> None:
+                 provider: ValueProvider
+                 ):
         if not name:
             raise ValueError("Name cannot be empty")
         if not shape:
@@ -84,7 +69,6 @@ class RandomVar(Generic[P]):
         self._name = name
         self._shape = shape
         self._provider = provider
-        self._var_kind = var_kind
 
     @property
     def name(self) -> str:
@@ -94,23 +78,7 @@ class RandomVar(Generic[P]):
     def shape(self) -> tuple[int, ...]:
         return self._shape
 
-    @property
-    def var_kind(self) -> P:
-        return self._var_kind
-
-    def get_value(self, state: Array | None = None) -> Array:
+    def get_value(self, state: Array) -> Array:
         return self._provider(state)
 
-class RandomVarFactory:
-    @staticmethod
-    def from_data(name: str, data: Array) -> RandomVar[Literal["observed"]]:
-        return RandomVar(name, data.shape, make_data_provider(data), "observed")
-
-    @staticmethod
-    def from_parameter(name: str, index: Index) -> RandomVar[Literal["parameter"]]:
-        return RandomVar(name, index.get_shape(), make_parameter_selector(index), "parameter")
-
-# Type aliases using the new syntax
-Parameter = RandomVar[Literal["parameter"]]
-ObservedVariable = RandomVar[Literal["observed"]]
 
