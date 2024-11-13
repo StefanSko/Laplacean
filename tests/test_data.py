@@ -35,6 +35,7 @@ def test_view_on_random_var():
     test_nums: jnp.array = jnp.array([num for num in range(0, len+10)])
     random_var_1: Parameter = RandomVarFactory.from_parameter(name='mu_1', index=test_index_1)
     random_var_2: Parameter = RandomVarFactory.from_parameter(name='mu_2', index=test_index_2)
+    #TODO How to make mypy trigger a warning when no array is passed?
     assert jnp.allclose(random_var_1.get_value(test_nums), test_nums[:10], atol=1e-6)
     assert jnp.allclose(random_var_2.get_value(test_nums), test_nums[10:], atol=1e-6)
 
