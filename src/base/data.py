@@ -45,7 +45,6 @@ class ValueProvider(Protocol):
 
         ...
 
-# Implementation for data
 def make_var_provider(index: Index) -> ValueProvider:
     def provider(state: Array) -> Array:
         if state is None:
