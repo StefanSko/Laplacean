@@ -1,70 +1,118 @@
-from typing import Callable, Union
+from typing import Callable, Generic, Union, Protocol
 import jax.numpy as jnp
 from jaxtyping import Array, Float
-from jax.scipy.stats import norm, expon
+from jax.scipy.stats import norm
 import jax
 
-from base.data import RandomVar, ObservedVariable, Parameter, Index
+from typing import TypeVar
 
-LogDensity = Float[Array, ""]
+from base.data import RandomVar, Index
 
+from dataclasses import dataclass
 
-class Distribution:
-    """Probability distribution over random variables"""
-    log_prob: Callable[[RandomVar, Array], LogDensity]
+LogProb = Float[Array, ""]
 
-    def __init__(self, log_prob: Callable[[RandomVar, Array], LogDensity]):
+class Var:
+    """Base class for variables in the Bayesian network"""
+    value: Array | float | None = None
+    
+    def __init__(self, value: Array | float | None = None) -> None:
+        self.value = value
+
+class Parameter(Var):
+    """Parameter variable type"""
+    pass
+
+class Data(Var):
+    """Data variable type"""
+    pass
+
+V = TypeVar('V', bound=Var)
+
+class Distribution(Generic[V]):
+    log_prob: Callable[[V], LogProb]
+
+    def __init__(self, log_prob: Callable[[V], LogProb]):
         self.log_prob = log_prob
+    
+    def __call__(self, var: V) -> LogProb:
+        return self.log_prob(var)
 
-    @staticmethod
-    def normal(
-            loc: float,
-            scale: float
-    ) -> 'Distribution':
-        #in case of likelihood var is data
-        def log_prob(rv: RandomVar, var: Array) -> LogDensity:
-            value = rv.get_value(var)
-            loc_value = jnp.array(loc)
-            scale_value = jnp.array(scale)
-            return jnp.sum(norm.logpdf(value, loc_value, scale_value))
+class Prior(Distribution[Parameter]):
+    """A distribution over parameters (prior distribution)"""
+    def __init__(self, log_prob: Callable[[Parameter], LogProb]):
+        super().__init__(log_prob)
 
-        return Distribution(log_prob)
+class Likelihood:
+    """A function that produces a distribution over data given parameters"""
+    def __init__(self, dist_fn: Callable[[Parameter], Distribution[Data]]):
+        self._dist_fn = dist_fn
+    
+    def __call__(self, param: Parameter) -> Distribution[Data]:
+        return self._dist_fn(param)
 
-    @staticmethod
-    def exponential(rate: float) -> 'Distribution':
-        def log_prob(rv: RandomVar, var: Array) -> LogDensity:
-            value = rv.get_value(var)
-            return jnp.sum(expon.logpdf(value, scale=1 / rate))
+class DistSupplier(Protocol):
+    """Protocol defining how distributions are supplied to edges"""
+    def log_prob(self, var: RandomVar, params: Array) -> LogProb:
+        ...
 
-        return Distribution(log_prob)
+class PriorSupplier(DistSupplier):
+    """Supplies prior distributions for parameters"""
+    distribution: Prior
+    
+    def __init__(self, distribution: Prior):
+        self.distribution = distribution
+
+    def log_prob(self, var: RandomVar, params: Array) -> LogProb:
+        param_value = Parameter(var.get_value(params))
+        return self.distribution(param_value)
+
+class LikelihoodSupplier(DistSupplier):
+    """Supplies likelihood distributions for data"""
+    likelihood: Likelihood
+    data: Data
+    
+    def __init__(self, likelihood: Likelihood, data: Data):
+        self.likelihood = likelihood
+        self.data = data
+        
+    def log_prob(self, var: RandomVar, params: Array) -> LogProb:
+        parameter = Parameter(var.get_value(params))
+        return self.likelihood(parameter).log_prob(self.data)
+        
+
+def normal(
+        loc: Parameter, 
+        scale: Parameter
+) -> Distribution[Var]:
+    def log_prob(var: Var) -> LogProb:
+        loc_value = jnp.array(loc.value)
+        scale_value = jnp.array(scale.value)
+        
+        if var.value is None:
+            return jnp.array(0.0)
+        return jnp.sum(norm.logpdf(var.value, loc_value, scale_value))
+            
+    return Distribution(log_prob)
 
 
+
+@dataclass(frozen=True)
 class Edge:
     """Probabilistic relationship between variables"""
     child: RandomVar
-    distribution: Distribution
-    name: str
-    parameter_names: list[str]  # Track which parameters this edge uses
+    dist_supplier: DistSupplier
+    name: str = "unnamed_edge"
 
-    def __init__(self, child: RandomVar, distribution: Distribution, 
-                 parameter_names: list[str], name: str = "unnamed_edge"):
-        self.child = child
-        self.distribution = distribution
-        self.parameter_names = parameter_names
-        self.name = name
-
-    def get_parameter_names(self) -> list[str]:
-        return self.parameter_names
-
-    def log_prob(self, param_values: dict[str, Array]) -> LogDensity:
+    def log_prob(self, param_values: Array) -> LogProb:
         """
         Compute log probability using parameter values
         
         Args:
             param_values: Dictionary mapping parameter names to their values
         """
-        return self.distribution.log_prob(self.child, param_values)
-
+        return self.dist_supplier.log_prob(self.child, param_values)
+    
     def __repr__(self) -> str:
         return f"Edge({self.name})"
 
@@ -83,49 +131,21 @@ class BayesianNetwork:
         self.param_size = param_size
         self.param_index = param_index
 
-    def log_prob(self) -> LogDensity:
+    def log_prob(self, params: Array) -> LogProb:
         """Compute total log probability of model"""
-        return jnp.sum(jnp.array([edge.log_prob() for edge in self.edges]))
+        return jnp.sum(jnp.array([edge.log_prob(params) for edge in self.edges]))
 
-    def potential_energy(self) -> LogDensity:
+    def potential_energy(self, params: Array) -> LogProb:
         """Compute potential energy (negative log probability)"""
-        return -self.log_prob()
+        return -self.log_prob(params)
 
-    def gradient(self) -> Array:
+    def gradient(self, params: Array) -> Array:
         """
         Compute gradient of potential energy with respect to parameters.
         Uses JAX automatic differentiation to trace through the edges.
         """
-        # JAX will automatically trace through:
-        # 1. Edge.log_prob() -> Distribution.log_prob() -> RandomVar.get_value()
-        #TODO: Think about a fix of how to traverse parameters
-        return jax.grad(lambda: self.potential_energy())()
+        return jax.grad(self.potential_energy)(params)
 
-class BayesianJaxDiffExecutor:
-
-    model: BayesianNetwork
-    param_indices: dict[str, Index]
-
-    def __init__(self, model: BayesianNetwork, param_indices: dict[str, Index]):
-        self.model = model
-        self.param_indices = param_indices
-    
-    def log_prob(self, params: Array) -> LogDensity:
-        """
-        Compute total log probability of model using views into params array
-        
-        Args:
-            params: Flat array containing all parameters
-        """
-        def edge_log_prob(edge: Edge) -> LogDensity:
-            # Get parameter values directly from params array using indices
-            param_values = {
-                name: self.param_indices[name].select(params)
-                for name in edge.get_parameter_names()
-            }
-            return edge.log_prob(param_values)
-
-        return jnp.sum(jnp.array([edge_log_prob(edge) for edge in self.model.edges]))
 
 class ModelBuilder:
     """Stan-like model builder interface"""
