@@ -1,37 +1,62 @@
+from typing import cast
+
 import jax.numpy as jnp
 from jax.scipy.stats import norm, expon
 
-from base.data import RandomVar, ObservedVariable, Parameter
-from methods.bayesian_network_v2 import Distribution, Edge, BayesianNetwork
+from base.data import RandomVar, Index, make_var_provider
+from methods.bayesian_network_v2 import Distribution, Edge, BayesianNetwork, normal, Parameter, PriorSupplier, Prior, \
+    LikelihoodSupplier, Likelihood, Data
 
 
-def test_normal_with_constant_parameters():
-    # Create a mock random variable
-    mock_rv = RandomVar("test", (1,), lambda: jnp.array([1.0]))
-
+def test_normal_distribution():
+    
     # Create normal distribution with constant parameters
-    dist = Distribution.normal(loc=0.0, scale=1.0)
+    dist = normal(loc=Parameter(0.0), scale=Parameter(1.0))
 
     # Compute log probability
-    log_prob = dist.log_prob(mock_rv)
+    log_prob = dist(Parameter(1.0))
 
     # Compare with expected value
     expected = -1.418939  # log(1/√(2π)) - 0.5
     assert jnp.abs(log_prob - expected) < 1e-5
 
-def test_normal_with_random_parameters():
+def test_normal_prior():
     # Create random variables for value, location, and scale
-    value_rv = RandomVar("value", (1,), lambda: jnp.array([1.0]))
-    loc_rv = RandomVar("loc", (1,), lambda: jnp.array([0.0]))
-    scale_rv = RandomVar("scale", (1,), lambda: jnp.array([1.0]))
+    # Create normal distribution with constant parameters
+    dist = normal(loc=Parameter(0.0), scale=Parameter(1.0))
 
-    # Create normal distribution with random variable parameters
-    dist = Distribution.normal(loc=loc_rv, scale=scale_rv)
+    #TODO: FIX cast
+    prior_supplier = PriorSupplier(cast(Prior, dist))
 
-    # Compute log probability
-    log_prob = dist.log_prob(value_rv)
+    test_index = Index.vector(start=0, end=1)
+    val = jnp.ones(10)
+    var_provider = make_var_provider(index=test_index)
+    random_var = RandomVar(name='mu', shape=test_index.get_shape(), provider=var_provider)
+    
+    log_prob = prior_supplier.log_prob(random_var, val)
 
     # Compare with expected value
+    expected = -1.418939  # log(1/√(2π)) - 0.5
+    assert jnp.abs(log_prob - expected) < 1e-5
+
+def test_normal_likelihood():
+    # Create normal distribution with constant parameters
+    
+    #TODO: Fix Likelihood
+    
+    def likelihood_fn(mean: Parameter) -> Distribution[Data]:
+        return cast(Distribution[Data], normal(mean, Parameter(0.0)))
+    
+    likelihood = Likelihood(likelihood_fn)
+    likelihood_provider = LikelihoodSupplier(likelihood, data = Data(jnp.array([1.0])))
+
+    test_index = Index.vector(start=0, end=1)
+    val = jnp.ones(10)
+    var_provider = make_var_provider(index=test_index)
+    random_var = RandomVar(name='mu', shape=test_index.get_shape(), provider=var_provider)
+
+    log_prob = likelihood_provider.log_prob(random_var, val)
+
     expected = -1.418939  # log(1/√(2π)) - 0.5
     assert jnp.abs(log_prob - expected) < 1e-5
 
