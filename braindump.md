@@ -90,3 +90,144 @@ This implementation reflects the symmetry in Bayesian inference:
 - Prior: p(θ) - Distribution over parameters
 - Likelihood: p(y|θ) - Distribution over data given parameters
 - Both are treated as probability distributions with the same interface
+
+## Functional motivation for Dual Prior x Likelihood view
+
+``PriorLogProb: Parameters[float] x Data[float] -> LogProb[float]``
+e.g. for ``N(0,1)`` consider the following in the context of hmc:
+`Parameters <= q_new: Array
+data <= [0, 1]: Array`
+
+``LikelihoodLogProb: Parameters[float] x Data[float] -> LogProb[float]``
+for Likelihood and ``N(0,1)``:
+`Parameters <= q_new: Array
+data <= IO -> Array`
+
+``LogProb: Parameters[float] x Data[float] -> LogProb[float]``
+
+
+# The Dual Nature of Priors and Likelihoods: A Functional Perspective
+
+## Introduction
+
+In probabilistic programming and Bayesian inference, we often treat priors and likelihoods as fundamentally different concepts. However, from a functional programming perspective, they share a remarkable duality that can lead to elegant and unified implementations. In this post, we'll explore this duality and show how concepts from functional programming can help us build better probabilistic programming frameworks.
+
+## The Basic Duality
+
+At their core, both priors and likelihoods map parameters and data to probabilities. In type signature notation:
+
+```haskell
+type LogProb = Parameters -> Data -> Float
+```
+
+The key difference lies not in their structure but in their interpretation:
+
+- **Prior**: Treats parameters as random variables and data as fixed
+- **Likelihood**: Treats data as random variables and parameters as fixed
+
+This subtle difference in interpretation leads to different implementations but identical functional signatures.
+
+## A Functional View
+
+From a functional programming perspective, we can view both priors and likelihoods as instances of the same abstract type. Consider this generic type in Rust:
+
+```rust
+struct Probability<P, D, R, Mode> {
+    transform: Box<dyn Fn(&P, &D) -> R>,
+    _phantom: PhantomData<Mode>
+}
+```
+
+Or in Haskell:
+
+```haskell
+newtype Prob p d a = Prob { runProb :: p -> d -> a }
+```
+
+This abstraction captures several important properties:
+
+1. **Functorial Nature**: Both can be mapped over
+2. **Monoid Structure**: They compose through addition (in log space)
+3. **Profunctor Properties**: They're contravariant in parameters and covariant in result
+
+## Unifying Properties
+
+The unified view reveals several interesting properties:
+
+### 1. Composition
+
+Both priors and likelihoods compose in the same way:
+
+```haskell
+compose :: (Num a) => Prob p d a -> Prob p d a -> Prob p d a
+compose p1 p2 = Prob $ \params data -> 
+    runProb p1 params data + runProb p2 params data
+```
+
+### 2. Transformation
+
+They share the same mapping properties:
+
+```haskell
+map :: (a -> b) -> Prob p d a -> Prob p d b
+map f prob = Prob $ \params data -> 
+    f (runProb prob params data)
+```
+
+### 3. Sequential Operations
+
+Both can be chained in similar ways through monadic operations:
+
+```haskell
+bind :: Prob p d a -> (a -> Prob p d b) -> Prob p d b
+```
+
+## Practical Implications
+
+This unified view has several practical benefits:
+
+1. **Generic Algorithms**: Samplers like HMC can work with both priors and likelihoods uniformly
+2. **Composition**: Easy combination of multiple priors or likelihoods
+3. **Type Safety**: The common interface prevents mixing incompatible probabilities
+4. **Code Reuse**: Shared implementations of common operations
+
+## Implementation Examples
+
+Here's a simple implementation in Python using a unified framework:
+
+```python
+class Probability(Generic[P, D, R]):
+    def __init__(self, transform: Callable[[P, D], R]):
+        self.transform = transform
+    
+    def map(self, f: Callable[[R], Any]) -> 'Probability[P, D, Any]':
+        return Probability(lambda p, d: f(self.transform(p, d)))
+    
+    def compose(self, other: 'Probability[P, D, R]') -> 'Probability[P, D, R]':
+        return Probability(lambda p, d: 
+            self.transform(p, d) + other.transform(p, d))
+```
+
+## Real-World Applications
+
+This unified view becomes particularly powerful when:
+
+1. Implementing new MCMC algorithms
+2. Building probabilistic programming languages
+3. Creating modular Bayesian models
+4. Developing composable inference algorithms
+
+## Conclusion
+
+The duality between priors and likelihoods, when viewed through the lens of functional programming, reveals a beautiful symmetry in probabilistic programming. This unified perspective not only leads to more elegant code but also provides practical benefits in terms of abstraction, reuse, and type safety.
+
+By embracing this functional view, we can build more maintainable and robust probabilistic programming frameworks while gaining deeper insights into the nature of Bayesian inference.
+
+## Further Reading
+
+- Category Theory for Programmers
+- Functional Programming in Probabilistic Machine Learning
+- Implementation Patterns in Probabilistic Programming Languages
+
+
+
