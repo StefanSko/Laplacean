@@ -7,6 +7,8 @@ from pathlib import Path
 from dataclasses import dataclass
 from typing import Callable, Dict, List
 import matplotlib.pyplot as plt
+import seaborn as sns
+import pandas as pd
 
 @dataclass
 class BenchmarkResult:
@@ -115,36 +117,95 @@ def jax_mmap(size: int):
     
     return result
 
-def plot_results(all_results: Dict[str, Dict[int, List[BenchmarkResult]]], 
-                sizes: List[int], metric: str = 'memory'):
-    plt.figure(figsize=(12, 6))
+def run_experiment_suite(operations: Dict[str, Callable], 
+                        sizes: List[int], 
+                        n_runs: int = 15) -> pd.DataFrame:
+    """Run benchmarks N times and collect results in a DataFrame."""
+    results_data = []
     
-    for backend, results in all_results.items():
-        if metric == 'memory':
-            values = [np.mean([r.peak_memory_mb for r in results[size]]) for size in sizes]
-            ylabel = 'Peak Memory Usage (MB)'
-        else:
-            values = [np.mean([r.execution_time_ms for r in results[size]]) for size in sizes]
-            ylabel = 'Execution Time (ms)'
+    for run_id in range(n_runs):
+        print(f"\nRun {run_id + 1}/{n_runs}")
+        
+        for name, operation in operations.items():
+            print(f"  Benchmarking {name}...")
             
-        plt.plot(sizes, values, marker='o', label=backend)
+            for size in sizes:
+                print(f"    Size {size}x{size}")
+                # Measure single run
+                process = psutil.Process()
+                start_mem = process.memory_info().rss / (1024 * 1024)
+                start_time = time.time()
+                
+                operation(size)
+                
+                end_time = time.time()
+                end_mem = process.memory_info().rss / (1024 * 1024)
+                
+                results_data.append({
+                    'run_id': run_id,
+                    'backend': name,
+                    'size': size,
+                    'memory_mb': end_mem - start_mem,
+                    'time_ms': (end_time - start_time) * 1000
+                })
     
+    return pd.DataFrame(results_data)
+
+def calculate_statistics(df: pd.DataFrame) -> pd.DataFrame:
+    """Calculate summary statistics for each backend and size combination."""
+    stats_df = df.groupby(['backend', 'size']).agg({
+        'memory_mb': ['mean', 'std', 'min', 'max'],
+        'time_ms': ['mean', 'std', 'min', 'max']
+    }).round(2)
+    
+    return stats_df
+
+def plot_enhanced_results(df: pd.DataFrame, metric: str = 'memory'):
+    """Create enhanced plots with error bars and distributions."""
+    plot_dir = Path("plots/")
+    plot_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Set style
+    sns.set_style("whitegrid")
+    
+    # Create figure with two subplots
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 12))
+    
+    # Plot 1: Line plot with confidence intervals
+    metric_col = 'memory_mb' if metric == 'memory' else 'time_ms'
+    ylabel = 'Peak Memory Usage (MB)' if metric == 'memory' else 'Execution Time (ms)'
+    
+    sns.lineplot(data=df, x='size', y=metric_col, hue='backend',
+                ci=95, err_style='band', ax=ax1)
+    ax1.set_title(f'{ylabel} vs Matrix Size (with 95% CI)')
+    ax1.set_xlabel('Matrix Size (N×N)')
+    ax1.set_ylabel(ylabel)
+    
+    # Plot 2: Box plot for distribution
+    sns.boxplot(data=df, x='size', y=metric_col, hue='backend', ax=ax2)
+    ax2.set_title(f'Distribution of {ylabel} by Matrix Size')
+    ax2.set_xlabel('Matrix Size (N×N)')
+    ax2.set_ylabel(ylabel)
+    
+    # Adjust layout and save
+    plt.tight_layout()
+    plt.savefig(plot_dir / f'{metric}_enhanced_benchmark.png')
+    plt.close()
+    
+    # Create violin plots separately
+    plt.figure(figsize=(12, 6))
+    sns.violinplot(data=df, x='size', y=metric_col, hue='backend')
+    plt.title(f'Distribution of {ylabel} by Matrix Size')
     plt.xlabel('Matrix Size (N×N)')
     plt.ylabel(ylabel)
-    plt.title(f'{ylabel} vs Matrix Size')
-    plt.legend()
-    plt.grid(True)
-    
-    # Save plot
-    plot_dir = Path("plots")
-    plot_dir.mkdir(parents=True, exist_ok=True)
-    plt.savefig(plot_dir / f'{metric}_benchmark.png')
+    plt.xticks(rotation=45)
+    plt.tight_layout()
+    plt.savefig(plot_dir / f'{metric}_violin_plot.png')
     plt.close()
 
 def main():
-    # Define matrix sizes to test
-    sizes = [1000, 2000, 3000, 4000]
-    repetitions = 3
+    sizes = [4000, 6000, 8000, 10000]
+    n_runs = 15  # Single parameter for number of repetitions
     
     operations = {
         'NumPy (In-Memory)': numpy_in_memory,
@@ -155,25 +216,21 @@ def main():
         'JAX (Mmap)': jax_mmap,
     }
     
-    all_results = {}
+    # Run experiments with single N
+    results_df = run_experiment_suite(operations, sizes, n_runs)
     
-    for name, operation in operations.items():
-        print(f"Benchmarking {name}...")
-        results = benchmark_operation(operation, name, sizes, repetitions)
-        all_results[name] = results
-        
-        # Print results for this operation
-        for size in sizes:
-            mem_avg = np.mean([r.peak_memory_mb for r in results[size]])
-            time_avg = np.mean([r.execution_time_ms for r in results[size]])
-            print(f"Size {size}x{size}:")
-            print(f"  Average Memory Usage: {mem_avg:.2f} MB")
-            print(f"  Average Execution Time: {time_avg:.2f} ms")
-        print()
+    # Calculate and print statistics
+    memory_stats = calculate_statistics(results_df)
+    print("\nMemory Usage Statistics (MB):")
+    print(memory_stats['memory_mb'])
     
-    # Generate plots
-    plot_results(all_results, sizes, 'memory')
-    plot_results(all_results, sizes, 'time')
+    print("\nExecution Time Statistics (ms):")
+    print(memory_stats['time_ms'])
+    
+    
+    # Generate enhanced plots
+    plot_enhanced_results(results_df, 'memory')
+    plot_enhanced_results(results_df, 'time')
 
 if __name__ == "__main__":
     main()
