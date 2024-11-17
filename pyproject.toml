@@ -28,6 +28,12 @@ mypy = "^1.11.0"
 seaborn = "^0.13.2"
 jupyter = "^1.0.0"
 
+[tool.poetry.group.experiments.dependencies]
+torch = "^2.2.1"
+numpy = "^2.0.4"
+psutil = "^5.9.8"
+matplotlib = "^3.8.3"
+
 
 [build-system]
 requires = ["poetry-core"]
