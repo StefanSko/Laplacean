@@ -131,23 +131,38 @@ def run_experiment_suite(operations: Dict[str, Callable],
             
             for size in sizes:
                 print(f"    Size {size}x{size}")
-                # Measure single run
+                
+                # Force garbage collection before measurement
+                import gc
+                gc.collect()
+                
                 process = psutil.Process()
                 start_mem = process.memory_info().rss / (1024 * 1024)
+                peak_mem = start_mem
                 start_time = time.time()
                 
+                # Run operation
                 operation(size)
                 
+                # Get peak memory
+                current_mem = process.memory_info().rss / (1024 * 1024)
+                peak_mem = max(peak_mem, current_mem)
+                
                 end_time = time.time()
-                end_mem = process.memory_info().rss / (1024 * 1024)
+                
+                # Calculate memory usage as peak - baseline
+                memory_used = peak_mem - start_mem
                 
                 results_data.append({
                     'run_id': run_id,
                     'backend': name,
                     'size': size,
-                    'memory_mb': end_mem - start_mem,
+                    'memory_mb': max(0, memory_used),  # Ensure non-negative
                     'time_ms': (end_time - start_time) * 1000
                 })
+                
+                # Additional cleanup
+                gc.collect()
     
     return pd.DataFrame(results_data)
 
@@ -205,11 +220,9 @@ def plot_enhanced_results(df: pd.DataFrame, metric: str = 'memory'):
 
 def main():
     sizes = [4000, 6000, 8000, 10000]
-    n_runs = 15  # Single parameter for number of repetitions
+    n_runs = 20  # Single parameter for number of repetitions
     
     operations = {
-        'NumPy (In-Memory)': numpy_in_memory,
-        'NumPy (Mmap)': numpy_mmap,
         'PyTorch (In-Memory)': torch_in_memory,
         'PyTorch (Mmap)': torch_mmap,
         'JAX (In-Memory)': jax_in_memory,
